@@ -1,0 +1,40 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  Parameters of Delayed Neuroinflammation Following Focal
+  Ischemic Stroke in the Mouse Cerebral Cortex Depend on
+  Lesion Size at the Beginning of the Subacute Stage.
+message: >-
+  If you use this software, please cite it using the metadata
+  from this file.
+type: dataset
+authors:
+  - family-names: Alekseev
+    given-names: V. I.
+  - family-names: Kislukhina
+    given-names: E. N.
+  - family-names: Lizunova
+    given-names: N. V.
+  - family-names: Surin
+    given-names: A. M.
+  - family-names: Lipina
+    given-names: T. V.
+  - family-names: Savostyanov
+    given-names: K. V.
+  - family-names: Bakaeva
+    given-names: Z. V.
+identifiers:
+  - type: doi
+    value: 10.1134/S0006297925604009
+keywords:
+  - ischemic stroke
+  - photothrombosis
+  - microglia
+  - Iba1
+  - immunohistochemical analysis
+  - neuroinflammation
+  - fluorescent Ca2+ sensor GCaMP6f
+  - wide-field optical imaging
+  - astrocytes
