@@ -22,7 +22,7 @@ II. УСТАНОВКА
 Для корректной работы данной программы требуются Python 3.8+ и следующие пакеты:
 pip install numpy pandas tifffile pillow matplotlib scipy scikit-image nd2 czifile readlif
 
-Для запуска данной программы требуется запустить файл Astrocyte_analyzer_refactoring_GUI.py через команду python Astrocyte_analyzer_refactoring_GUI.py.
+Для запуска данной программы требуется запустить файл Astro-Analyzer-v0.1.0-beta.1.py через команду python Astro-Analyzer-v0.1.0-beta.1.py.
 
 III. ИНТЕРФЕЙС
 
