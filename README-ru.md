@@ -119,7 +119,7 @@ python Astro-Analyzer-v1.0.0.py
 │   ├── sample_dapi_deconvolved_mip.png (только если есть канал ядер)<br>
 │   ├── sample_granules_deconvolved.tiff (только если есть канал гранул)<br>
 │   └── sample_granules_deconvolved_mip.png (только если есть канал гранул)<br>
-├── visualizations/<br>
+visualizations/<br>
     ├── sample_soma_slices.png — мозаика 2×5 Z, overlay сом<br>
     ├── sample_nuclei_slices.png — мозаика 2×5 Z, overlay ядер<br>
     ├── sample_cells_slices.png — мозаика 2×5 Z, overlay клеток<br>
