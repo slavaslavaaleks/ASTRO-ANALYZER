@@ -140,84 +140,82 @@ python Astro-Analyzer-v1.0.0.py
 
 Для файла sample.nd2, расположенного в директории {dir} и имеющего тип клеток «астроциты», создаётся папка:
 
-{dir}/sample_astrocytes_analysis/
-├── 3d_stacks/
-│   ├── sample_astro_3d.tiff — исходный сигнал клеток (16-bit)
-│   ├── sample_dapi_3d.tiff — DAPI (16-bit)
-│   ├── sample_nuclei_ids.tiff — метки ядер
-│   ├── sample_astrocytes_ids.tiff — метки клеток
-│   ├── sample_astrocytes_rgb.tiff — RGB-маска клеток
-│   └── sample_cells_overlay_rgb.tiff — цветные маски поверх серого исходного изображения
-├── deconvolved/
-│   ├── sample_cells_deconvolved.tiff
-│   ├── sample_cells_deconvolved_mip.png
-│   ├── sample_dapi_deconvolved.tiff
-│   └── sample_dapi_deconvolved_mip.png
-├── visualizations/
-│   ├── sample_soma_slices.png — мозаика сегментации сом
-│   ├── sample_nuclei_slices.png — мозаика сегментации ядер
-│   ├── sample_cells_slices.png — мозаика сегментации клеток
-│   ├── sample_mask_astrocytes.tiff
-│   ├── sample_mask_somas.tiff
-│   ├── sample_mask_nuclei.tiff
-│   ├── sample_mask_astrocytes_rgb.tiff
-│   ├── sample_mip_colored_bg.png
-│   └── sample_mip_colored_black.png
-├── manual_filtering/
-│   └── sample_manual_filtering.json — решения при ручном отборе
-└── sample_measurements.csv — таблица параметров
+{dir}/sample_astrocytes_analysis/<br>
+├── 3d_stacks/<br>
+│   ├── sample_astro_3d.tiff — исходный сигнал клеток (16-bit)<br>
+│   ├── sample_dapi_3d.tiff — DAPI (16-bit)<br>
+│   ├── sample_nuclei_ids.tiff — метки ядер<br>
+│   ├── sample_astrocytes_ids.tiff — метки клеток<br>
+│   ├── sample_astrocytes_rgb.tiff — RGB-маска клеток<br>
+│   └── sample_cells_overlay_rgb.tiff — цветные маски поверх серого исходного изображения<br>
+├── deconvolved/<br>
+│   ├── sample_cells_deconvolved.tiff<br>
+│   ├── sample_cells_deconvolved_mip.png<br>
+│   ├── sample_dapi_deconvolved.tiff<br>
+│   └── sample_dapi_deconvolved_mip.png<br>
+├── visualizations/<br>
+│   ├── sample_soma_slices.png — мозаика сегментации сом<br>
+│   ├── sample_nuclei_slices.png — мозаика сегментации ядер<br>
+│   ├── sample_cells_slices.png — мозаика сегментации клеток<br>
+│   ├── sample_mask_astrocytes.tiff<br>
+│   ├── sample_mask_somas.tiff<br>
+│   ├── sample_mask_nuclei.tiff<br>
+│   ├── sample_mask_astrocytes_rgb.tiff<br>
+│   ├── sample_mip_colored_bg.png<br>
+│   └── sample_mip_colored_black.png<br>
+├── manual_filtering/<br>
+│   └── sample_manual_filtering.json — решения при ручном отборе<br>
+└── sample_measurements.csv — таблица параметров<br>
 
 Также создаётся накопительная папка:
 
-{dir}/all_results_astrocytes_3d/
-└── all_measurements.csv — информация по всем клеткам из всех файлов в {dir}
+{dir}/all_results_astrocytes_3d/<br>
+└── all_measurements.csv — информация по всем клеткам из всех файлов в {dir}<br>
 
 ---
 
 ## VII. СТОЛБЦЫ В ФАЙЛАХ .CSV (sample_measurements.csv и all_measurements.csv)
 
-- cell_id — номер клетки в данном файле
-- filename — имя исходного файла
-- centroid_x, centroid_y, centroid_z — координаты центра масс клетки (в пикселях/вокселях)
-- cell_volume_um3 — объём всей клетки (сома + отростки), мкм³
-- soma_volume_um3 — объём сомы, мкм³
-- nucleus_volume_um3 — объём ядра, мкм³
-- cytoplasm_volume_um3 — объём цитоплазмы, мкм³
-- cell_surface_area_um2 — площадь поверхности клетки, мкм²
-- cell_sphericity — сферичность клетки
-- cell_solidity — солидность клетки
-- soma_solidity — солидность сомы
-- nucleus_solidity — солидность ядра
-- cell_elongation_3d — элонгация (отношение главных осей тензора инерции) клетки
-- cell_eccentricity — эксцентриситет
-- cell_flatness — плоскостность
-- cell_convexity_3d — выпуклость (3D)
-- cell_extent_3d — заполненность bounding box (3D)
-- cell_mean_intensity — средняя интенсивность сигнала клетки
-- soma_mean_intensity — средняя интенсивность сигнала сомы
-- nucleus_mean_intensity — средняя интенсивность сигнала ядра
-- cytoplasm_mean_intensity — средняя интенсивность сигнала цитоплазмы
-- nuclear_cytoplasmic_ratio — отношение объёма ядра к объёму цитоплазмы (если ядра нет, равно 0)
-- cell_nucleus_intensity_ratio — отношение интенсивности ядра к цитоплазме
-- cell_nucleus_centroid_distance_um — смещение центроида ядра от центроида клетки, мкм
-- cell_soma_centroid_distance_um — смещение центроида сомы от центроида клетки, мкм
-- process_max_count — максимальное число отростков, обнаруженных на каком-либо радиусе сканирования
-- process_max_radius — радиус, при котором это число достигнуто
-- cell_MIP_projection_perimeter_um — периметр проекции клетки, мкм
-- cell_perimeter_um — периметр клетки, мкм (для 2D изображений)
-- soma_perimeter_um — периметр сомы, мкм (для 2D изображений)
-- nucleus_perimeter_um — периметр ядра, мкм (для 2D изображений)
-
-**Гранулы (если выбраны):**
-- granule_mean_intensity — средняя интенсивность гранул
-- granule_count — количество гранул
-- granule_mean_size_um3 — средний размер гранул, мкм³
-- granule_volume_um3 — суммарный объём гранул, мкм³
-- granule_volume_fraction — доля объёма гранул в объёме клетки
-- granule_spatial_dispersion_um — пространственная дисперсия гранул, мкм
-- granule_nearest_neighbor_mean_um — среднее расстояние до ближайшего соседа, мкм
-- granule_clark_evans_index — индекс Кларка–Эванса
-- granule_signal_to_background_ratio — SBR гранул
+- cell_id — номер клетки в данном файле<br>
+- filename — имя исходного файла<br>
+- centroid_x, centroid_y, centroid_z — координаты центра масс клетки (в пикселях/вокселях)<br>
+- cell_volume_um3 — объём всей клетки (сома + отростки), мкм³<br>
+- soma_volume_um3 — объём сомы, мкм³<br>
+- nucleus_volume_um3 — объём ядра, мкм³<br>
+- cytoplasm_volume_um3 — объём цитоплазмы, мкм³<br>
+- cell_surface_area_um2 — площадь поверхности клетки, мкм²<br>
+- cell_sphericity — сферичность клетки<br>
+- cell_solidity — солидность клетки<br>
+- soma_solidity — солидность сомы<br>
+- nucleus_solidity — солидность ядра<br>
+- cell_elongation_3d — элонгация (отношение главных осей тензора инерции) клетки<br>
+- cell_eccentricity — эксцентриситет<br>
+- cell_flatness — плоскостность<br>
+- cell_convexity_3d — выпуклость (3D)<br>
+- cell_extent_3d — заполненность bounding box (3D)<br>
+- cell_mean_intensity — средняя интенсивность сигнала клетки<br>
+- soma_mean_intensity — средняя интенсивность сигнала сомы<br>
+- nucleus_mean_intensity — средняя интенсивность сигнала ядра<br>
+- cytoplasm_mean_intensity — средняя интенсивность сигнала цитоплазмы<br>
+- nuclear_cytoplasmic_ratio — отношение объёма ядра к объёму цитоплазмы (если ядра нет, равно 0)<br>
+- cell_nucleus_intensity_ratio — отношение интенсивности ядра к цитоплазме<br>
+- cell_nucleus_centroid_distance_um — смещение центроида ядра от центроида клетки, мкм<br>
+- cell_soma_centroid_distance_um — смещение центроида сомы от центроида клетки, мкм<br>
+- process_max_count — максимальное число отростков, обнаруженных на каком-либо радиусе сканирования<br>
+- process_max_radius — радиус, при котором это число достигнуто<br>
+- cell_MIP_projection_perimeter_um — периметр проекции клетки, мкм<br>
+- cell_perimeter_um — периметр клетки, мкм (для 2D изображений)<br>
+- soma_perimeter_um — периметр сомы, мкм (для 2D изображений)<br>
+- nucleus_perimeter_um — периметр ядра, мкм (для 2D изображений)<br>
+- granule_mean_intensity — средняя интенсивность гранул<br>
+- granule_count — количество гранул<br>
+- granule_mean_size_um3 — средний размер гранул, мкм³<br>
+- granule_volume_um3 — суммарный объём гранул, мкм³<br>
+- granule_volume_fraction — доля объёма гранул в объёме клетки<br>
+- granule_spatial_dispersion_um — пространственная дисперсия гранул, мкм<br>
+- granule_nearest_neighbor_mean_um — среднее расстояние до ближайшего соседа, мкм<br>
+- granule_clark_evans_index — индекс Кларка–Эванса<br>
+- granule_signal_to_background_ratio — SBR гранул<br>
 
 ---
 
