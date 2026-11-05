@@ -1,4 +1,4 @@
-# ASTRO-ANALYZER v1.0.0
+# ASTRO-ANALYZER v1.0.1
 # Copyright (C) 2025 Алексеев Вячеслав Иванович
 #
 # This program is free software: you can redistribute it and/or modify
