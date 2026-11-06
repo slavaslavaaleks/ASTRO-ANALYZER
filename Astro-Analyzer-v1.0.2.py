@@ -3315,6 +3315,18 @@ class Segmentation:
         max_radius_xy = min(int(round(15.0 / max(xy_um, 1e-6))), 30)
         max_radius_xy = max(2, min(max_radius_xy, half_win_xy))
 
+        max_center_dist_px = max(1, int(round(5.0 / max(xy_um, 1e-6))))
+        max_center_dist_px = min(max_center_dist_px, half_win_xy)
+
+        max_r_soma_um = 8.0
+        max_r_soma_px = max(2, int(round(max_r_soma_um / max(xy_um, 1e-6))))
+        max_r_soma_px = min(max_r_soma_px, max_radius_xy, half_win_xy)
+
+        circle_mask_cache = {}
+        for rr in range(1, max_r_soma_px + 1):
+            yy_r, xx_r = np.ogrid[-rr:rr+1, -rr:rr+1]
+            circle_mask_cache[rr] = (yy_r**2 + xx_r**2) <= rr**2
+
         for i, (cz, cy, cx) in enumerate(click_centers, 1):
             if not (0 <= cz < z_dim and 0 <= cy < y_dim and 0 <= cx < x_dim):
                 continue
@@ -3352,6 +3364,12 @@ class Segmentation:
 
             slice_masks = []
 
+            r_search = max(1, int(round(max_center_dist_px)))
+            yy_grid, xx_grid = np.mgrid[-r_search:r_search + 1, -r_search:r_search + 1]
+            dist2_grid = yy_grid * yy_grid + xx_grid * xx_grid
+            offsets_raw = np.argwhere(dist2_grid <= (r_search * r_search))
+            offsets = sorted(offsets_raw.tolist(), key=lambda t: (t[0] - r_search) ** 2 + (t[1] - r_search) ** 2)
+
             for z_idx in range(z_dim):
                 slice_data = vol[z_idx]
                 if slice_data.size == 0 or np.ptp(slice_data) < 0.01:
@@ -3375,37 +3393,51 @@ class Segmentation:
                     slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
                     continue
 
-                max_r = 0
-                for r in range(max_radius_xy, 0, -1):
-                    yy, xx = np.ogrid[-r:r+1, -r:r+1]
-                    circle_mask = (yy**2 + xx**2) <= r**2
+                seed_y_c = max(0, min(h_local - 1, seed_y_local))
+                seed_x_c = max(0, min(w_local - 1, seed_x_local))
 
-                    for py_c, px_c in zip(ys, xs):
+                best_r_here = 0
+
+                for r in range(max_r_soma_px, 0, -1):
+                    found_for_r = False
+                    cmask = circle_mask_cache[r]
+                    for (oy, ox) in offsets:
+                        py_c = seed_y_c + (oy - r_search)
+                        px_c = seed_x_c + (ox - r_search)
                         if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                            continue
+                        dy_c = py_c - seed_y_local
+                        dx_c = px_c - seed_x_local
+                        if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
                             continue
 
                         patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
-                        if np.all(patch[circle_mask]):
-                            max_r = r
+                        if np.all(patch[cmask]):
+                            best_r_here = r
+                            found_for_r = True
                             break
-                    if max_r > 0:
+                    if found_for_r:
                         break
 
                 marker_vol_slice = np.zeros((h_local, w_local), dtype=bool)
 
-                if max_r > 0:
-                    min_r = max(1, int(max_r * 0.75))
-                    for r in range(max_r, min_r - 1, -1):
-                        yy, xx = np.ogrid[-r:r+1, -r:r+1]
-                        circle_mask = (yy**2 + xx**2) <= r**2
-
-                        for py_c, px_c in zip(ys, xs):
+                if best_r_here > 0:
+                    min_r = max(1, int(best_r_here * 0.75))
+                    for r in range(best_r_here, min_r - 1, -1):
+                        cmask = circle_mask_cache[r]
+                        for (oy, ox) in offsets:
+                            py_c = seed_y_c + (oy - r_search)
+                            px_c = seed_x_c + (ox - r_search)
                             if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                                continue
+                            dy_c = py_c - seed_y_local
+                            dx_c = px_c - seed_x_local
+                            if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
                                 continue
 
                             patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
-                            if np.all(patch[circle_mask]):
-                                marker_vol_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1][circle_mask] = True
+                            if np.all(patch[cmask]):
+                                marker_vol_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1][cmask] = True
 
                 slice_masks.append(marker_vol_slice)
 
@@ -3646,6 +3678,18 @@ class Segmentation:
         max_radius_xy = min(int(round(15.0 / max(xy_um, 1e-6))), 30)
         max_radius_xy = max(2, min(max_radius_xy, half_win_xy))
 
+        max_center_dist_px = max(1, int(round(5.0 / max(xy_um, 1e-6))))
+        max_center_dist_px = min(max_center_dist_px, half_win_xy)
+
+        max_r_soma_um = 8.0
+        max_r_soma_px = max(2, int(round(max_r_soma_um / max(xy_um, 1e-6))))
+        max_r_soma_px = min(max_r_soma_px, max_radius_xy, half_win_xy)
+
+        circle_mask_cache = {}
+        for rr in range(1, max_r_soma_px + 1):
+            yy_r, xx_r = np.ogrid[-rr:rr+1, -rr:rr+1]
+            circle_mask_cache[rr] = (yy_r**2 + xx_r**2) <= rr**2
+
         for i, (cz, cy, cx) in enumerate(click_centers, 1):
             if not (0 <= cz < z_dim and 0 <= cy < y_dim and 0 <= cx < x_dim):
                 continue
@@ -3683,6 +3727,12 @@ class Segmentation:
 
             slice_masks = []
 
+            r_search = max(1, int(round(max_center_dist_px)))
+            yy_grid, xx_grid = np.mgrid[-r_search:r_search + 1, -r_search:r_search + 1]
+            dist2_grid = yy_grid * yy_grid + xx_grid * xx_grid
+            offsets_raw = np.argwhere(dist2_grid <= (r_search * r_search))
+            offsets = sorted(offsets_raw.tolist(), key=lambda t: (t[0] - r_search) ** 2 + (t[1] - r_search) ** 2)
+
             for z_idx in range(z_dim):
                 slice_data = vol[z_idx]
                 if slice_data.size == 0 or np.ptp(slice_data) < 0.01:
@@ -3706,37 +3756,719 @@ class Segmentation:
                     slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
                     continue
 
-                max_r = 0
-                for r in range(max_radius_xy, 0, -1):
-                    yy, xx = np.ogrid[-r:r+1, -r:r+1]
-                    circle_mask = (yy**2 + xx**2) <= r**2
+                seed_y_c = max(0, min(h_local - 1, seed_y_local))
+                seed_x_c = max(0, min(w_local - 1, seed_x_local))
 
-                    for py_c, px_c in zip(ys, xs):
+                best_r_here = 0
+
+                for r in range(max_r_soma_px, 0, -1):
+                    found_for_r = False
+                    cmask = circle_mask_cache[r]
+                    for (oy, ox) in offsets:
+                        py_c = seed_y_c + (oy - r_search)
+                        px_c = seed_x_c + (ox - r_search)
                         if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                            continue
+                        dy_c = py_c - seed_y_local
+                        dx_c = px_c - seed_x_local
+                        if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
                             continue
 
                         patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
-                        if np.all(patch[circle_mask]):
-                            max_r = r
+                        if np.all(patch[cmask]):
+                            best_r_here = r
+                            found_for_r = True
                             break
-                    if max_r > 0:
+                    if found_for_r:
                         break
 
                 marker_vol_slice = np.zeros((h_local, w_local), dtype=bool)
 
-                if max_r > 0:
-                    min_r = max(1, int(max_r * 0.75))
-                    for r in range(max_r, min_r - 1, -1):
-                        yy, xx = np.ogrid[-r:r+1, -r:r+1]
-                        circle_mask = (yy**2 + xx**2) <= r**2
-
-                        for py_c, px_c in zip(ys, xs):
+                if best_r_here > 0:
+                    min_r = max(1, int(best_r_here * 0.75))
+                    for r in range(best_r_here, min_r - 1, -1):
+                        cmask = circle_mask_cache[r]
+                        for (oy, ox) in offsets:
+                            py_c = seed_y_c + (oy - r_search)
+                            px_c = seed_x_c + (ox - r_search)
                             if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                                continue
+                            dy_c = py_c - seed_y_local
+                            dx_c = px_c - seed_x_local
+                            if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
                                 continue
 
                             patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
-                            if np.all(patch[circle_mask]):
-                                marker_vol_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1][circle_mask] = True
+                            if np.all(patch[cmask]):
+                                marker_vol_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1][cmask] = True
+
+                slice_masks.append(marker_vol_slice)
+
+            marker_vol = np.stack(slice_masks, axis=0)
+
+            if not np.any(marker_vol):
+                slice_seed = astro_norm[:, y0:y1, x0:x1]
+                seed_val = float(np.max(slice_seed[max(0, seed_y_local-2):min(h_local, seed_y_local+3),
+                max(0, seed_x_local-2):min(w_local, seed_x_local+3)])) if h_local > 0 and w_local > 0 else 0.0
+                region_mask = (slice_seed >= seed_val * 0.15) if seed_val > 0 else np.zeros((h_local, w_local), dtype=bool)
+                region_mask = np.stack([region_mask] * z_dim, axis=0)
+            else:
+                lbl_m, n_m = label(marker_vol, structure=np.ones((3, 3, 3)))
+
+                seed_lbl = 0
+                for dz_test in range(z_dim):
+                    if not np.any(marker_vol[dz_test]):
+                        continue
+                    ys_t, xs_t = np.where(marker_vol[dz_test])
+                    d2 = (ys_t - seed_y_local) ** 2 + (xs_t - seed_x_local) ** 2
+                    idx_best = int(np.argmin(d2))
+                    y_b = int(ys_t[idx_best])
+                    x_b = int(xs_t[idx_best])
+                    seed_lbl = int(lbl_m[dz_test, y_b, x_b])
+                    if seed_lbl > 0:
+                        break
+
+                if seed_lbl > 0:
+                    region_mask = (lbl_m == seed_lbl)
+                else:
+                    region_mask = marker_vol.copy()
+
+                if not np.any(region_mask) or region_mask.sum() < 5:
+                    region_mask = marker_vol.copy()
+
+            soma_segmented_3d[:, y0:y1, x0:x1][region_mask] = i
+
+        self.ctx._soma_labels = soma_segmented_3d
+        self.ctx._last_click_centers = click_centers
+        self.ctx._last_click_types = click_types
+        return soma_segmented_3d.astype(np.int32)
+
+    def manual_soma_setting(self, astrocyte_stack, initial_points=None, initial_types=None):
+        self.ctx.log(self.ctx.t("log.soma_title"))
+
+        z_dim, y_dim, x_dim = astrocyte_stack.shape
+        astro = astrocyte_stack.astype(np.float32)
+        astro_smooth = gaussian_filter(astro, sigma=0.5)
+        nz = astro_smooth[astro_smooth > 0]
+        if nz.size == 0:
+            self.ctx.log(self.ctx.t("log.soma_no_points"))
+            return np.zeros_like(astrocyte_stack, dtype=np.int32)
+        p0, p99 = np.percentile(nz, [1, 99])
+        astro_norm = np.clip((astro_smooth - p0) / (p99 - p0 + 1e-6), 0, 1)
+        mip = np.max(astro_norm, axis=0)
+
+        res = self.ctx.bridge._ask("soma_picker", mip=mip,
+                                   astro_norm=astro_norm,
+                                   initial_points=initial_points,
+                                   initial_types=initial_types)
+
+        if not res:
+            self.ctx.log(self.ctx.t("log.soma_no_points"))
+            return np.zeros_like(astrocyte_stack, dtype=np.int32)
+
+        if isinstance(res, tuple) and len(res) == 2:
+            points, point_types = res
+        else:
+            points, point_types = res, ["solid"] * len(res)
+
+        self.ctx.log(self.ctx.t("log.soma_points_set", n=len(points)))
+
+        click_centers = []
+        click_types = []
+
+        if self.ctx.scale_initialized:
+            xy_um = float(self.ctx.xy_scale_um) * float(self.ctx.downsample)
+        else:
+            xy_um = 1.0
+
+        z_window_px = max(3, int(5.0 / xy_um))
+
+        for i, pt in enumerate(points):
+            if len(pt) == 3:
+                py, px, pz = pt
+            else:
+                py, px = pt
+                pz = None
+
+            soma_py = int(round(py))
+            soma_px = int(round(px))
+            soma_py = max(0, min(y_dim - 1, soma_py))
+            soma_px = max(0, min(x_dim - 1, soma_px))
+
+            if pz is not None:
+                best_z_click = int(pz)
+                best_z_click = max(0, min(z_dim - 1, best_z_click))
+            else:
+                best_z_click = 0
+                best_score_click = -float('inf')
+                for z in range(z_dim):
+                    window = astro_norm[z,
+                    max(0, soma_py - z_window_px):min(y_dim, soma_py + z_window_px + 1),
+                    max(0, soma_px - z_window_px):min(x_dim, soma_px + z_window_px + 1)]
+                    if window.size > 0:
+                        score = np.median(window)
+                        if score > best_score_click:
+                            best_score_click = score
+                            best_z_click = z
+
+            click_centers.append((best_z_click, soma_py, soma_px))
+            click_types.append(point_types[i] if i < len(point_types) else "solid")
+
+        while True:
+            res_confirm = self.ctx.bridge._ask(
+                "soma_confirm",
+                astro_norm=astro_norm,
+                click_centers=click_centers,
+                click_types=click_types,
+            )
+
+            if res_confirm == "to_manual":
+                initial_pts = [(cy, cx, cz) for (cz, cy, cx) in click_centers]
+                manual_res = self.ctx.bridge._ask(
+                    "soma_picker",
+                    mip=mip,
+                    astro_norm=astro_norm,
+                    initial_points=initial_pts,
+                    initial_types=click_types,
+                )
+                if not manual_res:
+                    self.ctx.log(self.ctx.t("log.soma_cancelled"))
+                    return np.zeros_like(astrocyte_stack, dtype=np.int32)
+
+                if isinstance(manual_res, tuple) and len(manual_res) == 2:
+                    points, point_types = manual_res
+                else:
+                    points, point_types = manual_res, ["solid"] * len(manual_res)
+
+                click_centers = []
+                click_types = []
+                for i, pt in enumerate(points):
+                    py, px, pz = pt
+                    py = max(0, min(y_dim - 1, py))
+                    px = max(0, min(x_dim - 1, px))
+                    pz = max(0, min(z_dim - 1, pz))
+                    click_centers.append((pz, py, px))
+                    click_types.append(point_types[i] if i < len(point_types) else "solid")
+                continue
+
+            if not res_confirm:
+                self.ctx.log(self.ctx.t("log.soma_cancelled"))
+                return np.zeros_like(astrocyte_stack, dtype=np.int32)
+
+            break
+
+        self.ctx.log(self.ctx.t("log.soma_starting"))
+
+        import heapq
+        from scipy.ndimage import label, binary_dilation, distance_transform_edt, binary_fill_holes
+        from skimage.filters import threshold_otsu
+        from skimage.segmentation import watershed
+
+        grain_map = getattr(self.ctx, "_grain_index_map", None)
+        soma_segmented_3d = np.zeros_like(astrocyte_stack, dtype=np.int32)
+
+        if self.ctx.scale_initialized:
+            xy_um = float(self.ctx.xy_scale_um) * float(self.ctx.downsample)
+            z_um = float(self.ctx.z_scale_um)
+            if z_um <= 0:
+                z_um = 1.0
+        else:
+            xy_um = 1.0
+            z_um = 1.0
+
+        window_um = 30.0
+        half_win_xy = int(round((window_um * 0.5) / max(xy_um, 1e-6)))
+        half_win_xy = max(4, min(half_win_xy, max(y_dim, x_dim)))
+
+        max_radius_xy = min(int(round(15.0 / max(xy_um, 1e-6))), 30)
+        max_radius_xy = max(2, min(max_radius_xy, half_win_xy))
+
+        max_center_dist_px = max(1, int(round(5.0 / max(xy_um, 1e-6))))
+        max_center_dist_px = min(max_center_dist_px, half_win_xy)
+
+        max_r_soma_um = 8.0
+        max_r_soma_px = max(2, int(round(max_r_soma_um / max(xy_um, 1e-6))))
+        max_r_soma_px = min(max_r_soma_px, max_radius_xy, half_win_xy)
+
+        circle_mask_cache = {}
+        for rr in range(1, max_r_soma_px + 1):
+            yy_r, xx_r = np.ogrid[-rr:rr+1, -rr:rr+1]
+            circle_mask_cache[rr] = (yy_r**2 + xx_r**2) <= rr**2
+
+        for i, (cz, cy, cx) in enumerate(click_centers, 1):
+            if not (0 <= cz < z_dim and 0 <= cy < y_dim and 0 <= cx < x_dim):
+                continue
+
+            stype = click_types[i - 1] if i - 1 < len(click_types) else "solid"
+
+            if stype == "donut":
+                max_radius_z_d = 2
+                max_radius_xy_d = 3
+                for dz in range(-max_radius_z_d, max_radius_z_d + 1):
+                    nz_ = cz + dz
+                    if not (0 <= nz_ < z_dim):
+                        continue
+                    for dy in range(-max_radius_xy_d, max_radius_xy_d + 1):
+                        ny = cy + dy
+                        if not (0 <= ny < y_dim):
+                            continue
+                        for dx in range(-max_radius_xy_d, max_radius_xy_d + 1):
+                            nx = cx + dx
+                            if not (0 <= nx < x_dim):
+                                continue
+                            if (dz/max_radius_z_d)**2 + (dy/max_radius_xy_d)**2 + (dx/max_radius_xy_d)**2 <= 1.0:
+                                soma_segmented_3d[nz_, ny, nx] = i
+                continue
+
+            y0 = max(0, cy - half_win_xy)
+            y1 = min(y_dim, cy + half_win_xy + 1)
+            x0 = max(0, cx - half_win_xy)
+            x1 = min(x_dim, cx + half_win_xy + 1)
+
+            vol = astro_norm[:, y0:y1, x0:x1]
+            h_local, w_local = y1 - y0, x1 - x0
+            seed_y_local = cy - y0
+            seed_x_local = cx - x0
+
+            slice_masks = []
+
+            r_search = max(1, int(round(max_center_dist_px)))
+            yy_grid, xx_grid = np.mgrid[-r_search:r_search + 1, -r_search:r_search + 1]
+            dist2_grid = yy_grid * yy_grid + xx_grid * xx_grid
+            offsets_raw = np.argwhere(dist2_grid <= (r_search * r_search))
+            offsets = sorted(offsets_raw.tolist(), key=lambda t: (t[0] - r_search) ** 2 + (t[1] - r_search) ** 2)
+
+            for z_idx in range(z_dim):
+                slice_data = vol[z_idx]
+                if slice_data.size == 0 or np.ptp(slice_data) < 0.01:
+                    slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
+                    continue
+
+                nz_slice = slice_data[slice_data > 0]
+                if nz_slice.size < 20:
+                    slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
+                    continue
+
+                try:
+                    thr = float(threshold_otsu(nz_slice))
+                except Exception:
+                    thr = float(np.percentile(nz_slice, 50))
+
+                binary_slice = (slice_data >= thr)
+
+                ys, xs = np.where(binary_slice)
+                if len(ys) == 0:
+                    slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
+                    continue
+
+                seed_y_c = max(0, min(h_local - 1, seed_y_local))
+                seed_x_c = max(0, min(w_local - 1, seed_x_local))
+
+                best_r_here = 0
+
+                for r in range(max_r_soma_px, 0, -1):
+                    found_for_r = False
+                    cmask = circle_mask_cache[r]
+                    for (oy, ox) in offsets:
+                        py_c = seed_y_c + (oy - r_search)
+                        px_c = seed_x_c + (ox - r_search)
+                        if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                            continue
+                        dy_c = py_c - seed_y_local
+                        dx_c = px_c - seed_x_local
+                        if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
+                            continue
+
+                        patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
+                        if np.all(patch[cmask]):
+                            best_r_here = r
+                            found_for_r = True
+                            break
+                    if found_for_r:
+                        break
+
+                marker_vol_slice = np.zeros((h_local, w_local), dtype=bool)
+
+                if best_r_here > 0:
+                    min_r = max(1, int(best_r_here * 0.75))
+                    for r in range(best_r_here, min_r - 1, -1):
+                        cmask = circle_mask_cache[r]
+                        for (oy, ox) in offsets:
+                            py_c = seed_y_c + (oy - r_search)
+                            px_c = seed_x_c + (ox - r_search)
+                            if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                                continue
+                            dy_c = py_c - seed_y_local
+                            dx_c = px_c - seed_x_local
+                            if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
+                                continue
+
+                            patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
+                            if np.all(patch[cmask]):
+                                marker_vol_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1][cmask] = True
+
+                slice_masks.append(marker_vol_slice)
+
+            marker_vol = np.stack(slice_masks, axis=0)
+
+            if not np.any(marker_vol):
+                slice_seed = astro_norm[:, y0:y1, x0:x1]
+                seed_val = float(np.max(slice_seed[max(0, seed_y_local-2):min(h_local, seed_y_local+3),
+                max(0, seed_x_local-2):min(w_local, seed_x_local+3)])) if h_local > 0 and w_local > 0 else 0.0
+                region_mask = (slice_seed >= seed_val * 0.15) if seed_val > 0 else np.zeros((h_local, w_local), dtype=bool)
+                region_mask = np.stack([region_mask] * z_dim, axis=0)
+            else:
+                lbl_m, n_m = label(marker_vol, structure=np.ones((3, 3, 3)))
+
+                seed_lbl = 0
+                for dz_test in range(z_dim):
+                    if not np.any(marker_vol[dz_test]):
+                        continue
+                    ys_t, xs_t = np.where(marker_vol[dz_test])
+                    d2 = (ys_t - seed_y_local) ** 2 + (xs_t - seed_x_local) ** 2
+                    idx_best = int(np.argmin(d2))
+                    y_b = int(ys_t[idx_best])
+                    x_b = int(xs_t[idx_best])
+                    seed_lbl = int(lbl_m[dz_test, y_b, x_b])
+                    if seed_lbl > 0:
+                        break
+
+                if seed_lbl > 0:
+                    region_mask = (lbl_m == seed_lbl)
+                else:
+                    region_mask = marker_vol.copy()
+
+                if not np.any(region_mask) or region_mask.sum() < 5:
+                    region_mask = marker_vol.copy()
+
+            soma_segmented_3d[:, y0:y1, x0:x1][region_mask] = i
+
+        self.ctx._soma_labels = soma_segmented_3d
+        self.ctx._last_click_centers = click_centers
+        self.ctx._last_click_types = click_types
+        return soma_segmented_3d.astype(np.int32)
+
+    def auto_soma_setting(self, astrocyte_stack, astro_norm=None, initial_points=None, initial_types=None):
+        self.ctx.log(self.ctx.t("log.soma_auto_starting"))
+
+        z_dim, y_dim, x_dim = astrocyte_stack.shape
+
+        if astro_norm is None:
+            astro = astrocyte_stack.astype(np.float32)
+            astro_smooth = gaussian_filter(astro, sigma=0.5)
+            nz = astro_smooth[astro_smooth > 0]
+            if nz.size < 100:
+                self.ctx.log(self.ctx.t("log.soma_auto_none"))
+                return None
+            p0, p99 = np.percentile(nz, [1, 99])
+            astro_norm = np.clip((astro_smooth - p0) / (p99 - p0 + 1e-6), 0, 1)
+
+        mip = np.max(astro_norm, axis=0)
+
+        points = []
+        types = []
+        if initial_points:
+            z_max_allowed = z_dim - 1
+            for i, pt in enumerate(initial_points):
+                if isinstance(pt, (tuple, list)) and len(pt) == 3:
+                    py_, px_, pz_ = pt
+                    py_ = max(0, min(y_dim - 1, int(py_)))
+                    px_ = max(0, min(x_dim - 1, int(px_)))
+                    pz_ = max(0, min(z_max_allowed, int(pz_)))
+                    points.append((py_, px_, pz_))
+                    types.append(initial_types[i] if initial_types and i < len(initial_types) else "solid")
+
+        if not points:
+            t_s_pair = self._multilevel_soma_threshold(mip)
+            if t_s_pair is None:
+                self.ctx.log(self.ctx.t("log.soma_auto_none"))
+                return None
+            t_s, t_s2, all_thresholds = t_s_pair
+
+            weight_mip = None
+            weight_map = getattr(self.ctx, "_weight_map", None)
+            if weight_map is not None and weight_map.shape == astro_norm.shape:
+                weight_mip = np.max(weight_map, axis=0)
+
+            peak_xy, peak_scores = self._soma_peaks_2d(
+                mip, astro_norm, all_thresholds, weight_mip=weight_mip
+            )
+
+            if not peak_xy:
+                self.ctx.log(self.ctx.t("log.soma_auto_none"))
+                return None
+
+            candidates = []
+            for (py, px), sc in zip(peak_xy, peak_scores):
+                z_layers = self._z_layers_for_soma(astro_norm, py, px)
+                if not z_layers:
+                    z_layers = [int(np.argmax(astro_norm[:, py, px]))]
+                for pz in z_layers:
+                    candidates.append({
+                        "pz": int(pz), "py": int(py), "px": int(px),
+                        "score": float(sc),
+                        "method": "existing_2d",
+                    })
+
+            if not candidates:
+                self.ctx.log(self.ctx.t("log.soma_auto_none"))
+                return None
+
+            if self.ctx.scale_initialized:
+                xy_um = float(self.ctx.xy_scale_um) * float(self.ctx.downsample)
+                z_um = float(self.ctx.z_scale_um)
+            else:
+                xy_um = 1.0
+                z_um = 1.0
+
+            soma_diam_px_xy = 12.0 / max(xy_um, 1e-6)
+            soma_diam_px_z = 12.0 / max(z_um, 1e-6)
+            match_r_xy = max(2.5, soma_diam_px_xy * 0.7)
+            match_r_z = max(1.5, soma_diam_px_z * 0.7)
+
+            border_margin = max(5, int(10.0 / max(xy_um, 1e-6)))
+            valid_peaks = []
+
+            for c in candidates:
+                if c["py"] < border_margin or c["py"] > (y_dim - border_margin) or \
+                        c["px"] < border_margin or c["px"] > (x_dim - border_margin):
+                    continue
+                if c["pz"] <= 1 or c["pz"] >= (z_dim - 2):
+                    continue
+                valid_peaks.append(c)
+
+            if not valid_peaks:
+                self.ctx.log(self.ctx.t("log.soma_auto_none"))
+                return None
+
+            merged = []
+            for p in valid_peaks:
+                found = False
+                for mp in merged:
+                    dxy = math.hypot(mp["py"] - p["py"], mp["px"] - p["px"])
+                    dz = abs(mp["pz"] - p["pz"])
+                    if dxy <= match_r_xy and dz <= match_r_z:
+                        if p["score"] > mp["score"]:
+                            mp["score"] = p["score"]
+                            mp["pz"] = p["pz"]
+                            mp["py"] = p["py"]
+                            mp["px"] = p["px"]
+                        found = True
+                        break
+                if not found:
+                    merged.append(p)
+
+            merged.sort(key=lambda c: c["score"], reverse=True)
+
+            centers = [(c["pz"], c["py"], c["px"]) for c in merged]
+            scores = [c["score"] for c in merged]
+            min_dist_um = 10.0
+            kept_centers = self._nms_3d(centers, scores, min_dist_um)
+
+            final_points = []
+            for cen in kept_centers:
+                pz, py, px = int(cen[0]), int(cen[1]), int(cen[2])
+                final_points.append((py, px, pz))
+
+            points = final_points
+            types = ["solid"] * len(points)
+
+        self.ctx.log(self.ctx.t("log.soma_auto_found", n=len(points)))
+
+        while True:
+            click_centers = [(pz, py, px) for (py, px, pz) in points]
+
+            res = self.ctx.bridge._ask(
+                "soma_confirm",
+                astro_norm=astro_norm,
+                click_centers=click_centers,
+                click_types=types,
+            )
+
+            if res == "to_manual":
+                manual_res = self.ctx.bridge._ask(
+                    "soma_picker",
+                    mip=mip,
+                    astro_norm=astro_norm,
+                    initial_points=points,
+                    initial_types=types,
+                )
+                if not manual_res:
+                    self.ctx.log(self.ctx.t("log.soma_cancelled"))
+                    return None
+
+                if isinstance(manual_res, tuple) and len(manual_res) == 2:
+                    points, types = manual_res
+                else:
+                    points, types = manual_res, ["solid"] * len(manual_res)
+
+                self.ctx.log(self.ctx.t("log.soma_points_set", n=len(points)))
+                continue
+
+            if not res:
+                self.ctx.log(self.ctx.t("log.soma_cancelled"))
+                return None
+
+            break
+
+        self.ctx.log(self.ctx.t("log.soma_starting"))
+
+        click_centers = []
+        click_types = []
+        for i, pt in enumerate(points, 1):
+            py, px, pz = pt
+            py = max(0, min(y_dim - 1, py))
+            px = max(0, min(x_dim - 1, px))
+            pz = max(0, min(z_dim - 1, pz))
+            click_centers.append((pz, py, px))
+            click_types.append(types[i - 1] if types and i - 1 < len(types) else "solid")
+
+        from scipy.ndimage import label, binary_dilation, distance_transform_edt
+        from skimage.filters import threshold_otsu
+        from skimage.segmentation import watershed
+
+        grain_map = getattr(self.ctx, "_grain_index_map", None)
+        soma_segmented_3d = np.zeros_like(astrocyte_stack, dtype=np.int32)
+
+        if self.ctx.scale_initialized:
+            xy_um = float(self.ctx.xy_scale_um) * float(self.ctx.downsample)
+            z_um = float(self.ctx.z_scale_um)
+            if z_um <= 0:
+                z_um = 1.0
+        else:
+            xy_um = 1.0
+            z_um = 1.0
+
+        window_um = 30.0
+        half_win_xy = int(round((window_um * 0.5) / max(xy_um, 1e-6)))
+        half_win_xy = max(4, min(half_win_xy, max(y_dim, x_dim)))
+
+        max_radius_xy = min(int(round(15.0 / max(xy_um, 1e-6))), 30)
+        max_radius_xy = max(2, min(max_radius_xy, half_win_xy))
+
+        max_center_dist_px = max(1, int(round(5.0 / max(xy_um, 1e-6))))
+        max_center_dist_px = min(max_center_dist_px, half_win_xy)
+
+        max_r_soma_um = 8.0
+        max_r_soma_px = max(2, int(round(max_r_soma_um / max(xy_um, 1e-6))))
+        max_r_soma_px = min(max_r_soma_px, max_radius_xy, half_win_xy)
+
+        circle_mask_cache = {}
+        for rr in range(1, max_r_soma_px + 1):
+            yy_r, xx_r = np.ogrid[-rr:rr+1, -rr:rr+1]
+            circle_mask_cache[rr] = (yy_r**2 + xx_r**2) <= rr**2
+
+        for i, (cz, cy, cx) in enumerate(click_centers, 1):
+            if not (0 <= cz < z_dim and 0 <= cy < y_dim and 0 <= cx < x_dim):
+                continue
+
+            stype = click_types[i - 1] if i - 1 < len(click_types) else "solid"
+
+            if stype == "donut":
+                max_radius_z_d = 2
+                max_radius_xy_d = 3
+                for dz in range(-max_radius_z_d, max_radius_z_d + 1):
+                    nz_ = cz + dz
+                    if not (0 <= nz_ < z_dim):
+                        continue
+                    for dy in range(-max_radius_xy_d, max_radius_xy_d + 1):
+                        ny = cy + dy
+                        if not (0 <= ny < y_dim):
+                            continue
+                        for dx in range(-max_radius_xy_d, max_radius_xy_d + 1):
+                            nx = cx + dx
+                            if not (0 <= nx < x_dim):
+                                continue
+                            if (dz/max_radius_z_d)**2 + (dy/max_radius_xy_d)**2 + (dx/max_radius_xy_d)**2 <= 1.0:
+                                soma_segmented_3d[nz_, ny, nx] = i
+                continue
+
+            y0 = max(0, cy - half_win_xy)
+            y1 = min(y_dim, cy + half_win_xy + 1)
+            x0 = max(0, cx - half_win_xy)
+            x1 = min(x_dim, cx + half_win_xy + 1)
+
+            vol = astro_norm[:, y0:y1, x0:x1]
+            h_local, w_local = y1 - y0, x1 - x0
+            seed_y_local = cy - y0
+            seed_x_local = cx - x0
+
+            slice_masks = []
+
+            r_search = max(1, int(round(max_center_dist_px)))
+            yy_grid, xx_grid = np.mgrid[-r_search:r_search + 1, -r_search:r_search + 1]
+            dist2_grid = yy_grid * yy_grid + xx_grid * xx_grid
+            offsets_raw = np.argwhere(dist2_grid <= (r_search * r_search))
+            offsets = sorted(offsets_raw.tolist(), key=lambda t: (t[0] - r_search) ** 2 + (t[1] - r_search) ** 2)
+
+            for z_idx in range(z_dim):
+                slice_data = vol[z_idx]
+                if slice_data.size == 0 or np.ptp(slice_data) < 0.01:
+                    slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
+                    continue
+
+                nz_slice = slice_data[slice_data > 0]
+                if nz_slice.size < 20:
+                    slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
+                    continue
+
+                try:
+                    thr = float(threshold_otsu(nz_slice))
+                except Exception:
+                    thr = float(np.percentile(nz_slice, 50))
+
+                binary_slice = (slice_data >= thr)
+
+                ys, xs = np.where(binary_slice)
+                if len(ys) == 0:
+                    slice_masks.append(np.zeros((h_local, w_local), dtype=bool))
+                    continue
+
+                seed_y_c = max(0, min(h_local - 1, seed_y_local))
+                seed_x_c = max(0, min(w_local - 1, seed_x_local))
+
+                best_r_here = 0
+
+                for r in range(max_r_soma_px, 0, -1):
+                    found_for_r = False
+                    cmask = circle_mask_cache[r]
+                    for (oy, ox) in offsets:
+                        py_c = seed_y_c + (oy - r_search)
+                        px_c = seed_x_c + (ox - r_search)
+                        if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                            continue
+                        dy_c = py_c - seed_y_local
+                        dx_c = px_c - seed_x_local
+                        if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
+                            continue
+
+                        patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
+                        if np.all(patch[cmask]):
+                            best_r_here = r
+                            found_for_r = True
+                            break
+                    if found_for_r:
+                        break
+
+                marker_vol_slice = np.zeros((h_local, w_local), dtype=bool)
+
+                if best_r_here > 0:
+                    min_r = max(1, int(best_r_here * 0.75))
+                    for r in range(best_r_here, min_r - 1, -1):
+                        cmask = circle_mask_cache[r]
+                        for (oy, ox) in offsets:
+                            py_c = seed_y_c + (oy - r_search)
+                            px_c = seed_x_c + (ox - r_search)
+                            if py_c < r or py_c >= h_local - r or px_c < r or px_c >= w_local - r:
+                                continue
+                            dy_c = py_c - seed_y_local
+                            dx_c = px_c - seed_x_local
+                            if (dy_c * dy_c + dx_c * dx_c) > (max_center_dist_px * max_center_dist_px):
+                                continue
+
+                            patch = binary_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1]
+                            if np.all(patch[cmask]):
+                                marker_vol_slice[py_c-r:py_c+r+1, px_c-r:px_c+r+1][cmask] = True
 
                 slice_masks.append(marker_vol_slice)
 
