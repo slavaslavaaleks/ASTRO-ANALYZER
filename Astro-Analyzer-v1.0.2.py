@@ -1109,7 +1109,7 @@ class AnalysisContext:
         }
         self._current_base_name = None
         self._current_out_dir = None
-        self._growth_mode = "normal"
+        self.use_aggressive_growth = False
         self._gui_scale_mode = "auto"
         self._gui_deconv_mode = "auto"
         self._gui_do_filter = True
@@ -2833,13 +2833,31 @@ class Segmentation:
 
     def _grow_cells_by_components(self, astro_norm, soma_mask, growth_mask,
                                   unique_ids, dip_hard_threshold=0.5):
+        if getattr(self.ctx, "use_aggressive_growth", False):
+            return self._grow_cells_by_components_aggressive(
+                astro_norm, soma_mask, growth_mask, unique_ids, dip_hard_threshold
+            )
+        return self._grow_cells_by_components_strict(
+            astro_norm, soma_mask, growth_mask, unique_ids, dip_hard_threshold
+        )
+
+    def _grow_cells_by_components_strict(self, astro_norm, soma_mask, growth_mask,
+                                         unique_ids, dip_hard_threshold=0.5):
         import heapq
         from scipy.ndimage import laplace
 
         z_dim, y_dim, x_dim = astro_norm.shape
+
         astro = astro_norm.astype(np.float32)
 
-        is_soft = getattr(self.ctx, "_growth_mode", "normal") == "soft"
+        if self.ctx.scale_initialized:
+            xy_um = float(self.ctx.xy_scale_um) * float(self.ctx.downsample)
+            z_um = float(self.ctx.z_scale_um)
+            if z_um <= 0:
+                z_um = 1.0
+        else:
+            xy_um = 1.0
+            z_um = 1.0
 
         sigma_xy_bg = max(30, min(y_dim, x_dim) // 15)
         local_mean = uniform_filter(
@@ -2849,8 +2867,326 @@ class Segmentation:
         )
         local_mean = np.maximum(local_mean, 1e-6)
 
+        bg1 = gaussian_filter(astro, sigma=(1.0, sigma_xy_bg, sigma_xy_bg), mode='reflect')
+        bg2 = gaussian_filter(astro, sigma=(1.0, sigma_xy_bg * 2.5, sigma_xy_bg * 2.5), mode='reflect')
+        bg3 = gaussian_filter(astro, sigma=(1.0, sigma_xy_bg * 5.0, sigma_xy_bg * 5.0), mode='reflect')
+
+        local_bg_multi = np.maximum(np.maximum(bg1, bg2), bg3)
+        local_bg_multi = np.maximum(local_bg_multi, 1e-6)
+
+        noise_ratio = astro / local_bg_multi
+        conf = np.clip((noise_ratio - 1.0) / 0.35, 0.0, 1.0).astype(np.float32)
+
         dip_mask = astro < (local_mean * 0.5)
+
         soma_bool = (soma_mask > 0)
+
+        graph_mask = (growth_mask | soma_bool) & (~dip_mask)
+        graph_mask = graph_mask | soma_bool
+
+        if not np.any(graph_mask):
+            self.ctx.log(self.ctx.t("log.cells_no_growth"))
+            return soma_mask.astype(np.int32)
+
+        from skimage.filters import threshold_otsu
+
+        def _exclude_dips_and_otsu(mask_in, astro_in, soma_in, xy_scale):
+            z_d, y_d, x_d = astro_in.shape
+            mask_out = mask_in.copy()
+
+            line_len_um = 2.0
+            half_len_px = max(1, int(round((line_len_um / 2.0) / max(xy_scale, 1e-6))))
+
+            if half_len_px < 1:
+                half_len_px = 1
+
+            directions = [(0, 1), (1, 1), (1, 0), (1, -1)]
+
+            for z in range(z_d):
+                sl = astro_in[z]
+                if not np.any(sl > 0):
+                    continue
+
+                sl_pad = np.pad(sl, half_len_px, mode='edge')
+
+                center_vals = sl_pad[half_len_px:half_len_px + y_d,
+                half_len_px:half_len_px + x_d]
+
+                has_dip = np.zeros((y_d, x_d), dtype=bool)
+
+                for dy, dx in directions:
+                    vals_min = np.full((y_d, x_d), np.inf, dtype=np.float32)
+
+                    for t in range(-half_len_px, half_len_px + 1):
+                        if t == 0:
+                            continue
+                        oy = dy * t + half_len_px
+                        ox = dx * t + half_len_px
+                        vals = sl_pad[oy:oy + y_d, ox:ox + x_d]
+                        vals_min = np.minimum(vals_min, vals)
+
+                    pts_along = (vals_min >= 1.05 * center_vals) & (center_vals > 0)
+                    has_dip |= pts_along
+
+                mask_out[z][has_dip] = False
+
+                for win_um in (5.0, 10.0, 15.0):
+                    win_px = max(3, int(round(win_um / max(xy_scale, 1e-6))))
+                    if win_px % 2 == 0:
+                        win_px += 1
+                    hw = win_px // 2
+                    if hw < 1:
+                        continue
+
+                    sl_pad_w = np.pad(sl, hw, mode='reflect')
+
+                    is_otsu_out = np.zeros((y_d, x_d), dtype=bool)
+
+                    for y in range(y_d):
+                        for x in range(x_d):
+                            if center_vals[y, x] <= 0:
+                                continue
+                            win = sl_pad_w[y:y + win_px, x:x + win_px]
+                            nz = win[win > 0]
+                            if nz.size < 10:
+                                continue
+                            try:
+                                thr = float(threshold_otsu(nz))
+                            except Exception:
+                                thr = float(np.median(nz))
+                            if center_vals[y, x] < thr:
+                                is_otsu_out[y, x] = True
+
+                    if win_um == 5.0:
+                        votes = is_otsu_out.astype(np.int32)
+                    else:
+                        votes += is_otsu_out.astype(np.int32)
+
+                mask_out[z][votes >= 2] = False
+                mask_out[z][soma_in[z]] = True
+
+            return mask_out
+
+        graph_mask = _exclude_dips_and_otsu(graph_mask, astro, soma_bool, xy_um)
+
+        labeled, num_comp = label(graph_mask, structure=np.ones((3, 3, 3)))
+
+        component_somas = {}
+        soma_coords_by_cid = {}
+
+        for cid in unique_ids:
+            soma_mask_cid = (soma_mask == cid)
+            if not np.any(soma_mask_cid):
+                continue
+            coords = np.argwhere(soma_mask_cid)
+            soma_coords_by_cid[cid] = coords
+
+            comp_ids = np.unique(labeled[soma_mask_cid])
+            comp_ids = comp_ids[comp_ids > 0]
+            for comp_id in comp_ids:
+                component_somas.setdefault(int(comp_id), set()).add(int(cid))
+
+        d_ref = min(y_dim, x_dim) / 4.0
+        edt = distance_transform_edt(~soma_bool).astype(np.float32)
+
+        neighbors_26 = [(dz, dy, dx)
+                        for dz in (-1, 0, 1)
+                        for dy in (-1, 0, 1)
+                        for dx in (-1, 0, 1)
+                        if not (dz == 0 and dy == 0 and dx == 0)]
+
+        def _make_slices(dz, dy, dx):
+            src_s = [slice(None), slice(None), slice(None)]
+            dst_s = [slice(None), slice(None), slice(None)]
+
+            if dz > 0:
+                src_s[0] = slice(0, z_dim - dz)
+                dst_s[0] = slice(dz, z_dim)
+            elif dz < 0:
+                src_s[0] = slice(-dz, z_dim)
+                dst_s[0] = slice(0, z_dim + dz)
+
+            if dy > 0:
+                src_s[1] = slice(0, y_dim - dy)
+                dst_s[1] = slice(dy, y_dim)
+            elif dy < 0:
+                src_s[1] = slice(-dy, y_dim)
+                dst_s[1] = slice(0, y_dim + dy)
+
+            if dx > 0:
+                src_s[2] = slice(0, x_dim - dx)
+                dst_s[2] = slice(dx, x_dim)
+            elif dx < 0:
+                src_s[2] = slice(-dx, x_dim)
+                dst_s[2] = slice(0, x_dim + dx)
+
+            return tuple(src_s), tuple(dst_s)
+
+        def _shifted_abs_diff(dz, dy, dx):
+            src_s, dst_s = _make_slices(dz, dy, dx)
+            shifted = np.zeros_like(astro)
+            shifted[dst_s] = astro[src_s]
+            return np.abs(shifted - astro).astype(np.float32)
+
+        diff_max = np.zeros((z_dim, y_dim, x_dim), dtype=np.float32)
+        for dz, dy, dx in neighbors_26:
+            diff = _shifted_abs_diff(dz, dy, dx)
+            diff_max = np.maximum(diff_max, diff)
+
+        threshold = 0.5 * diff_max
+
+        diff_big_count = np.zeros((z_dim, y_dim, x_dim), dtype=np.int32)
+        for dz, dy, dx in neighbors_26:
+            diff = _shifted_abs_diff(dz, dy, dx)
+            big = diff > threshold
+            diff_big_count += big.astype(np.int32)
+
+        n_total = len(neighbors_26)
+        n_big = diff_big_count
+        n_small = n_total - diff_big_count
+        n_small = np.maximum(n_small, 0)
+
+        narrow_bonus = n_small.astype(np.float32) / float(n_total)
+
+        base_weight = diff_max * astro
+        base_weight = base_weight / (1.0 + edt / d_ref)
+
+        weight = base_weight * (1.0 + narrow_bonus)
+
+        strong_penalty = conf ** 8
+        weight = weight * strong_penalty
+
+        edt_norm = np.clip(edt / max(d_ref, 1e-6), 0.0, None).astype(np.float32)
+        far_penalty = 1.0 + 8.0 * np.clip(edt_norm - 0.6, 0.0, None) * (1.0 - conf)
+        weight = weight / far_penalty
+
+        gain = 1.0 + 25.0 * (astro ** 3)
+        weight = weight * gain
+
+        weight = np.clip(weight, 0.0, None).astype(np.float32)
+
+        weight_in_graph = weight[graph_mask]
+        if len(weight_in_graph) > 0:
+            weight_median = float(np.median(weight_in_graph))
+        else:
+            weight_median = 0.0
+
+        forbidden_mask = weight < (weight_median * 0.3)
+        forbidden_mask = forbidden_mask & graph_mask
+        forbidden_mask = forbidden_mask & (~soma_bool)
+
+        eps = 1e-6
+        z_step_penalty = 2.0
+
+        final_cells = np.zeros_like(soma_mask, dtype=np.int32)
+
+        for cid in unique_ids:
+            if cid in soma_coords_by_cid:
+                coords = soma_coords_by_cid[cid]
+                for c in coords:
+                    final_cells[int(c[0]), int(c[1]), int(c[2])] = int(cid)
+
+        for comp_id in range(1, num_comp + 1):
+            comp_somas = component_somas.get(comp_id, set())
+            if len(comp_somas) == 0:
+                continue
+
+            if len(comp_somas) == 1:
+                cid = next(iter(comp_somas))
+                comp_mask = (labeled == comp_id)
+                assign_mask = comp_mask & (~forbidden_mask)
+                final_cells[assign_mask] = int(cid)
+                continue
+
+            comp_mask = (labeled == comp_id)
+            comp_coords = np.argwhere(comp_mask)
+
+            coord_to_idx = {}
+            coords_list = []
+            for i, c in enumerate(comp_coords):
+                zz, yy, xx = int(c[0]), int(c[1]), int(c[2])
+                coord_to_idx[(zz, yy, xx)] = i
+                coords_list.append((zz, yy, xx))
+
+            n_active = len(coords_list)
+            dist_active = np.full(n_active, np.inf, dtype=np.float32)
+            source_active = np.zeros(n_active, dtype=np.int32)
+
+            heap = []
+            for i, (zz, yy, xx) in enumerate(coords_list):
+                if soma_bool[zz, yy, xx]:
+                    dist_active[i] = 0.0
+                    source_active[i] = int(soma_mask[zz, yy, xx])
+                    heapq.heappush(heap, (0.0, i))
+
+            while heap:
+                d, i = heapq.heappop(heap)
+                if d > dist_active[i]:
+                    continue
+
+                z, y, x = coords_list[i]
+                w_here = weight[z, y, x]
+                src_here = source_active[i]
+
+                for dz, dy, dx in neighbors_26:
+                    nz, ny, nx = z + dz, y + dy, x + dx
+                    j = coord_to_idx.get((nz, ny, nx))
+                    if j is None:
+                        continue
+
+                    if forbidden_mask[nz, ny, nx]:
+                        continue
+
+                    w_nb = weight[nz, ny, nx]
+                    step_cost = 1.0 / (w_here * w_nb + eps)
+                    if dz != 0:
+                        step_cost *= z_step_penalty
+
+                    nd = d + step_cost
+
+                    if nd < dist_active[j]:
+                        dist_active[j] = nd
+                        source_active[j] = src_here
+                        heapq.heappush(heap, (nd, j))
+
+            for i, (zz, yy, xx) in enumerate(coords_list):
+                src_id = int(source_active[i])
+                if src_id > 0:
+                    final_cells[zz, yy, xx] = src_id
+
+        return final_cells
+
+    def _grow_cells_by_components_aggressive(self, astro_norm, soma_mask, growth_mask,
+                                             unique_ids, dip_hard_threshold=0.5):
+        import heapq
+        from scipy.ndimage import laplace
+
+        z_dim, y_dim, x_dim = astro_norm.shape
+
+        astro = astro_norm.astype(np.float32)
+
+        sigma_xy_bg = max(30, min(y_dim, x_dim) // 15)
+        local_mean = uniform_filter(
+            astro,
+            size=(3, sigma_xy_bg, sigma_xy_bg),
+            mode='reflect'
+        )
+        local_mean = np.maximum(local_mean, 1e-6)
+
+        bg1 = gaussian_filter(astro, sigma=(1.0, sigma_xy_bg, sigma_xy_bg), mode='reflect')
+        bg2 = gaussian_filter(astro, sigma=(1.0, sigma_xy_bg * 2.5, sigma_xy_bg * 2.5), mode='reflect')
+        bg3 = gaussian_filter(astro, sigma=(1.0, sigma_xy_bg * 5.0, sigma_xy_bg * 5.0), mode='reflect')
+
+        local_bg_multi = np.maximum(np.maximum(bg1, bg2), bg3)
+        local_bg_multi = np.maximum(local_bg_multi, 1e-6)
+
+        noise_ratio = astro / local_bg_multi
+        conf = np.clip((noise_ratio - 1.0) / 0.35, 0.0, 1.0).astype(np.float32)
+
+        dip_mask = astro < (local_mean * 0.5)
+
+        soma_bool = (soma_mask > 0)
+
         graph_mask = (growth_mask | soma_bool) & (~dip_mask)
         graph_mask = graph_mask | soma_bool
 
@@ -2931,8 +3267,10 @@ class Segmentation:
             diff_big_count += big.astype(np.int32)
 
         n_total = len(neighbors_26)
+        n_big = diff_big_count
         n_small = n_total - diff_big_count
         n_small = np.maximum(n_small, 0)
+
         narrow_bonus = n_small.astype(np.float32) / float(n_total)
 
         base_weight = diff_max * astro
@@ -2940,19 +3278,25 @@ class Segmentation:
 
         weight = base_weight * (1.0 + narrow_bonus)
 
+        strong_penalty = conf ** 8
+        weight = weight * strong_penalty
+
+        edt_norm = np.clip(edt / max(d_ref, 1e-6), 0.0, None).astype(np.float32)
+        far_penalty = 1.0 + 8.0 * np.clip(edt_norm - 0.6, 0.0, None) * (1.0 - conf)
+        weight = weight / far_penalty
+
+        gain = 1.0 + 25.0 * (astro ** 3)
+        weight = weight * gain
+
         lap_xyz = laplace(astro).astype(np.float32)
         dip = np.clip(lap_xyz, 0.0, None)
         eps_dip = 1e-6
         dip_norm = dip / (astro + eps_dip)
 
         weight = weight / (1.0 + dip_norm)
-
-        if is_soft:
-            dip_hard = dip_norm > 0.95
-        else:
-            dip_hard = dip_norm > dip_hard_threshold
-
+        dip_hard = dip_norm > dip_hard_threshold
         weight[dip_hard] = 0.0
+
         weight = np.clip(weight, 0.0, None).astype(np.float32)
 
         weight_in_graph = weight[graph_mask]
@@ -2961,17 +3305,12 @@ class Segmentation:
         else:
             weight_median = 0.0
 
-        if is_soft:
-            forbidden_mask = np.zeros_like(soma_bool)
-        else:
-            forbidden_mask = weight < (weight_median * 0.3)
-            forbidden_mask = forbidden_mask & graph_mask
-            forbidden_mask = forbidden_mask & (~soma_bool)
+        forbidden_mask = weight < (weight_median * 0.3)
+        forbidden_mask = forbidden_mask & graph_mask
+        forbidden_mask = forbidden_mask & (~soma_bool)
 
         eps = 1e-6
         z_step_penalty = 2.0
-
-        straight_penalty_factor = 3.0
 
         final_cells = np.zeros_like(soma_mask, dtype=np.int32)
 
@@ -3007,14 +3346,11 @@ class Segmentation:
             dist_active = np.full(n_active, np.inf, dtype=np.float32)
             source_active = np.zeros(n_active, dtype=np.int32)
 
-            dir_active = np.full((n_active, 3), np.nan, dtype=np.float32)
-
             heap = []
             for i, (zz, yy, xx) in enumerate(coords_list):
                 if soma_bool[zz, yy, xx]:
                     dist_active[i] = 0.0
                     source_active[i] = int(soma_mask[zz, yy, xx])
-                    dir_active[i] = [0.0, 0.0, 0.0]
                     heapq.heappush(heap, (0.0, i))
 
             while heap:
@@ -3025,7 +3361,6 @@ class Segmentation:
                 z, y, x = coords_list[i]
                 w_here = weight[z, y, x]
                 src_here = source_active[i]
-                dir_here = dir_active[i]
 
                 for dz, dy, dx in neighbors_26:
                     nz, ny, nx = z + dz, y + dy, x + dx
@@ -3038,25 +3373,14 @@ class Segmentation:
 
                     w_nb = weight[nz, ny, nx]
                     step_cost = 1.0 / (w_here * w_nb + eps)
-
                     if dz != 0:
                         step_cost *= z_step_penalty
-
-                    step_vec = np.array([dz, dy, dx], dtype=np.float32)
-                    step_vec /= np.linalg.norm(step_vec)
-
-                    if not np.isnan(dir_here).any():
-                        dot = np.dot(dir_here, step_vec)
-                        if dot < 0.5:
-                            penalty = 1.0 + (1.0 - dot) * straight_penalty_factor
-                            step_cost *= penalty
 
                     nd = d + step_cost
 
                     if nd < dist_active[j]:
                         dist_active[j] = nd
                         source_active[j] = src_here
-                        dir_active[j] = step_vec
                         heapq.heappush(heap, (nd, j))
 
             for i, (zz, yy, xx) in enumerate(coords_list):
@@ -6446,6 +6770,9 @@ class Analyzer:
             if m is not None and len(m) > 0:
                 all_results.append(m)
 
+            import gc
+            gc.collect()
+
         if all_results:
             combined = pd.concat(all_results, ignore_index=True)
 
@@ -6480,6 +6807,8 @@ class Analyzer:
     def process_file(self, filepath):
         try:
             start_time = time.time()
+
+            self.ctx.use_aggressive_growth = False
 
             if not self.ctx.scale_initialized:
                 self.file_io.extract_and_confirm_metadata(filepath)
@@ -6799,10 +7128,6 @@ class Analyzer:
                             soma_colors[int(cid)] = (r, g, b)
                         continue
 
-            self.viz._save_slices_visualization(astro, self.ctx.soma_segmented,
-                                                self.ctx.t("log.title_soma_slices"),
-                                                "soma_slices")
-
             self.ctx.nuclei_segmented = self.segmenter.segment_nuclei_local_from_soma(
                 self.ctx.soma_segmented, dapi
             )
@@ -6895,10 +7220,6 @@ class Analyzer:
                             break
                         continue
 
-            self.viz._save_slices_visualization(dapi, self.ctx.nuclei_segmented,
-                                                self.ctx.t("log.title_nuclei_slices"),
-                                                "nuclei_slices")
-
             if astro_norm_clean is not None:
                 self.ctx.cells_segmented = self.segmenter._grow_cells_from_soma(
                     astro_norm_clean, self.ctx.soma_segmented
@@ -6906,10 +7227,6 @@ class Analyzer:
             else:
                 self.ctx.cells_segmented = np.zeros_like(self.ctx.soma_segmented,
                                                          dtype=np.int32)
-
-            self.viz._save_slices_visualization(astro, self.ctx.cells_segmented,
-                                                self.ctx.t("log.title_cells_slices"),
-                                                "cells_slices")
 
             self.ctx.log(self.ctx.t("log.segmentation_time",
                                     t=time.time() - t2))
@@ -7067,7 +7384,7 @@ class Analyzer:
 
                     if res == "cut":
                         self.ctx.log(self.ctx.t("log.filter_cut_soft_mode"))
-                        self.ctx._growth_mode = "soft"
+                        self.ctx.use_aggressive_growth = True
                         self.ctx.cells_segmented = self.segmenter._grow_cells_from_soma(astro_norm, self.ctx.soma_segmented)
 
                         cell_mip = np.zeros((astro.shape[1], astro.shape[2]), dtype=np.int32)
@@ -7104,8 +7421,6 @@ class Analyzer:
                                 r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 1.0)
                                 cell_colors[int(cid)] = (r, g, b)
                         continue
-
-            self.ctx._growth_mode = "normal"
 
             gran_mask_all = None
 
@@ -7189,6 +7504,17 @@ class Analyzer:
 
                         gran_mip = np.max(gran_mask_all, axis=0)
                         continue
+
+            self.viz._save_slices_visualization(astro, self.ctx.soma_segmented,
+                                                self.ctx.t("log.title_soma_slices"),
+                                                "soma_slices")
+            if self.ctx.has_dapi and self.ctx.nuclei_segmented.max() > 0:
+                self.viz._save_slices_visualization(dapi, self.ctx.nuclei_segmented,
+                                                    self.ctx.t("log.title_nuclei_slices"),
+                                                    "nuclei_slices")
+            self.viz._save_slices_visualization(astro, self.ctx.cells_segmented,
+                                                self.ctx.t("log.title_cells_slices"),
+                                                "cells_slices")
 
             self.viz._save_cells_overlay_stack(astro, self.ctx.cells_segmented, base, out_dir)
 
