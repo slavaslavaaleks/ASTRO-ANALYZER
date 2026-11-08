@@ -58,7 +58,6 @@ TRANSLATIONS = {
         "btn.yes": "Да",
         "btn.no": "Нет",
 
-        "log.warn_prefix": "[WARN]",
         "log.loading": "    Загружаем: {name}",
         "log.2d_image": "    2D-изображение (Z=1) — будут 2D-параметры",
         "log.3d_stack": "    3D-стек: {n} срезов — будут 3D-параметры",
@@ -100,16 +99,12 @@ TRANSLATIONS = {
         "log.dapi_not_used": "    DAPI: не используется",
         "log.channels_in_analysis": "    Каналы в анализе: {ch}",
         "log.optics_title": "\n    Оптические параметры",
-        "log.optics_manual": "    Режим: вручную",
         "log.optics_no_metadata": "    Оптических параметров в метаданных нет",
         "log.optics_cells": "    Клетки: NA = {na}, λ = {wl:.1f} нм",
         "log.optics_dapi": "    DAPI:   NA = {na}, λ = {wl:.1f} нм",
         "log.deconv_start": "\n    Выполняется 3D-деконволюция...",
-        "log.deconv_dapi_start": "    Выполняется DAPI-деконволюция...",
         "log.deconv_slices_deleted": "    Удалено срезов по вашему выбору: {n} (Z: {z})",
         "log.deconv_all_slices_kept": "    Все срезы оставлены",
-        "log.deconv_done": "    Деконволюция и ручной отбор завершены. Размер стека: {shape}",
-        "log.deconv_dapi_done": "    DAPI-деконволюция завершена. Размер стека: {shape}",
         "log.soma_title": "\n    Разметка сом",
         "log.soma_no_points": "    Точки не добавлены. Сегментация отменена",
         "log.soma_points_set": "    Точек поставлено: {n}",
@@ -174,8 +169,6 @@ TRANSLATIONS = {
         "log.file_summary_time": "    Общее время: {t:.1f} с",
         "log.dapi_not_used_msg": "    DAPI не используется — ядра сегментироваться не будут",
         "log.soma_not_marked": "    Сомы не размечены — файл пропущен",
-        "log.filter_skip_no_norm": "    Ручная фильтрация пропущена (нет astro_norm)",
-        "log.filter_skip": "    Ручная фильтрация пропущена",
         "log.segmentation_time": "    Время сегментации: {t:.1f} с",
         "log.measurement_time": "    Время измерения: {t:.1f} с",
         "log.error_prefix": "Ошибка: {err}",
@@ -183,7 +176,6 @@ TRANSLATIONS = {
         "log.image_size_failed": "    Не удалось определить размер изображения: {err}",
         "log.scale_from_panel": "    Масштаб из настроек: XY = {xy:.4f} µm, Z = {z:.4f} µm",
         "log.analysis_done": "    Анализ завершён",
-        "log.analysis_done_title": "Анализ завершён",
         "log.metadata_reading": "    Чтение метаданных: {name}",
         "log.metadata_xy_ok": "    XY = {v:.4f} µm/px",
         "log.metadata_xy_none": "    XY не найдено — оставлено значение из настроек",
@@ -200,7 +192,6 @@ TRANSLATIONS = {
         "log.soma_auto_starting": "    Автодетекция сом...",
         "log.soma_auto_found": "    Автоматически найдено сом: {n}",
         "log.soma_auto_none": "    Автодетекция не нашла сом — переход в ручной режим",
-        "log.soma_auto_z_layers": "    Сом в (y={y}, x={x}): Z-слоёв {n}",
 
         "channel.cells": "клетки",
         "channel.dapi": "ядра (DAPI)",
@@ -225,7 +216,6 @@ TRANSLATIONS = {
         "state.off": "выключена",
 
         "ui.settings.title_main": "Укажите файл и параметры — затем «Запустить анализ».",
-        "ui.settings.subtitle": "После этого будет проведена сегментация и морфометрия клеток на фотографии.",
         "ui.settings.file": "Файл/папка:",
         "ui.settings.browse": "Обзор…",
         "ui.settings.load_mode": "Режим загрузки:",
@@ -267,18 +257,9 @@ TRANSLATIONS = {
         "btn.cancel": "Отмена",
         "btn.apply": "Применить",
         "btn.done": "Готово",
-        "btn.continue": "Продолжить",
-        "btn.skip": "Пропустить",
         "btn.start_analysis": "Запустить сегментацию",
-        "btn.choose": "Выбрать…",
-        "btn.delete_return_slice": "Удалить / Вернуть срез",
         "btn.to_manual_soma": "К ручной расстановке сом",
 
-        "dlg.files.title": "Выбор файлов",
-        "dlg.files.one_or_dir": "Один файл или папка?",
-        "dlg.files.one": "Один файл",
-        "dlg.files.dir": "Папка с файлами",
-        "dlg.files.selected_n": "Выбрано: {n} файл(ов)",
         "dlg.files.nothing": "Ничего не выбрано.",
         "dlg.files.images": "Изображения",
         "dlg.files.all": "Все файлы",
@@ -304,19 +285,26 @@ TRANSLATIONS = {
         "dlg.channels.role_granules": "Гранулы",
         "dlg.channels.role_none": "Не включать в анализ",
         "dlg.channels.role_used": "Уже назначен другому каналу",
+
+        "dlg.channels.seg_mode_title": "Метод сегментации клеток",
+        "dlg.channels.seg_mode_strict": "Строгая сегментация",
+        "dlg.channels.seg_mode_strict_hint": "Работает медленнее, выделяет только яркие отростки. Подходит при большом уровне шума.",
+        "dlg.channels.seg_mode_soft": "Мягкая сегментация",
+        "dlg.channels.seg_mode_soft_hint": "Работает быстрее, выделяет любые отростки, но может захватывать шум при высоком его уровне.",
+        "log.filter_cut_strict_mode": "    Сегментация переключена на строгую.",
+        "dlg.filter.prob_make_strict": "Нужно сделать сегментацию строже",
+        "dlg.filter.prob_make_soft": "Нужно сделать сегментацию мягче",
+        "dlg.filter.warn_make_strict": "Будет применена строгая сегментация (отростки — только яркие). Если это не поможет, попробуйте уменьшить уровень шума или переключить тип изображения.",
+        "dlg.filter.warn_make_soft": "Будет применена мягкая сегментация (захватывает больше отростков, но чувствительна к шуму).",
+
         "dlg.channels.help": (
-            "Для каждого канала выберите роль из списка под картинкой.\n"
-            "«Клетки» — обязательная роль.\n"
-            "«DAPI» — ядра (необязательно).\n"
-            "«Гранулы» — внутриклеточные гранулы (необязательно).\n"
-            "«Не включать в анализ» — канал игнорируется.\n"
-            "Роль, уже занятая другим каналом, из списка исчезает."
+            "Роль канала — в списке под картинкой.\n"
+            "«Клетки» — обязательно, «DAPI» и «Гранулы» — по желанию.\n"
         ),
 
         "log.granule_channel": "    Гранулы: канал {idx}",
 
         "dlg.metrics.title": "Метрики для измерения",
-        "dlg.metrics.group_targets": "Что измерять",
         "dlg.metrics.group_shape_2d_cell": "Форма клетки (2D)",
         "dlg.metrics.group_shape_2d_soma": "Форма сомы (2D)",
         "dlg.metrics.group_shape_2d_nucleus": "Форма ядра (2D)",
@@ -336,10 +324,6 @@ TRANSLATIONS = {
         "dlg.metrics.select_none": "Снять все",
         "dlg.metrics.btn": "Метрики…",
         "dlg.metrics.hint": "Отметьте метрики для CSV. Каждая группа применяется только к своей структуре.",
-
-        "dlg.metrics.item.target_cell": "Клетка",
-        "dlg.metrics.item.target_soma": "Сома",
-        "dlg.metrics.item.target_nucleus": "Ядро",
 
         "dlg.metrics.item.cell_area": "Площадь клетки",
         "dlg.metrics.item.cell_perimeter": "Периметр клетки",
@@ -428,12 +412,6 @@ TRANSLATIONS = {
         "dlg.metrics.item.granule_spatial": "Пространственное распределение гранул",
         "dlg.metrics.item.granule_sbr": "Контраст гранул (SBR)",
 
-        "dlg.metrics.group_targets_legacy": "К каким структурам применять форму/текстуру",
-
-        "dlg.dapi.title": "Определение DAPI-канала",
-        "dlg.dapi.text": "Автоматически определить не удалось.\nКликните по каналу, который является DAPI:",
-        "dlg.dapi.help": "Кликните по каналу с ядрами.",
-
         "dlg.soma.title": "Расстановка сом",
         "dlg.soma.counter": "Точек: {n}",
         "dlg.soma.coords": "XY = ({y}, {x})",
@@ -458,24 +436,19 @@ TRANSLATIONS = {
         "dlg.slices.badge": "Z = {z}   [{label}]",
         "dlg.slices.toggle": "Удалить / Вернуть срез",
         "dlg.slices.help": "Листайте слайдером.\nКнопка переключает текущий срез.",
-        "dlg.slices.title_selector": "Выберите срезы для удаления.",
 
         "dlg.filter.prob_not_cells": "Нужно удалить часть сегментов",
         "dlg.filter.warn_delete": "Сейчас откроется экран удаления. Кликните по объектам, которые нужно удалить из анализа.",
         "dlg.filter.delete_title": "Удаление лишних сегментов",
         "dlg.filter.delete_help": "Кликните по объекту, чтобы удалить его из анализа.",
         "dlg.filter.quality_title": "Качество сегментации",
-        "dlg.filter.quality_ask": "Устраивает ли вас качество текущей сегментации клеток?",
         "dlg.filter.problem_title": "В чём проблема?",
         "dlg.filter.problem_ask": "Укажите, что пошло не так (это поможет перенаправить вас в нужное место):",
         "dlg.filter.prob_fused": "Нужно поправить сомы",
         "dlg.filter.prob_artifacts": "Нужно убрать лишние Z-срезы",
-        "dlg.filter.prob_cut": "Нужно увеличить агрессивность роста",
         "dlg.filter.warn_soma": "Сейчас откроется экран коррекции сом. Добавьте пропущенные сомы или удалите лишние, чтобы разделить слипшиеся клетки.",
         "dlg.filter.warn_slices": "Сейчас откроется экран удаления Z-срезов. Уберите срезы, на которых видны артефакты или шум.",
         "dlg.filter.warn_slices_fallback": "Деконволюция была выключена, поэтому вам нужно вернуться в настройки и перезапустить анализ, чтобы убрать артефакты.",
-        "dlg.filter.warn_cut": "Рост отростков будет усилен (снижен порог контраста). Если это не поможет, попробуйте в следующий раз выбрать другой тип изображения или уменьшить деконволюцию.",
-        "dlg.filter.resegmenting_soft": "    Применяется мягкая коррекция роста отростков...",
 
         "entity.cells": "клеток",
         "entity.soma": "сом",
@@ -487,7 +460,6 @@ TRANSLATIONS = {
 
         "dlg.unknown": "Неизвестный диалог: {kind}",
         "log.dialog_error": "ОШИБКА ДИАЛОГА: {err}",
-        "log.donut_volume_shape_error": "Ожидается astro_norm_3d формы (Z, Y, X)",
 
         "dlg.error.title": "Ошибка",
         "dlg.files.title_short": "Файлы",
@@ -500,7 +472,6 @@ TRANSLATIONS = {
     "en": {
         "btn.yes": "Yes",
         "btn.no": "No",
-        "log.warn_prefix": "[WARN]",
         "log.loading": "    Loading: {name}",
         "log.2d_image": "    2D image (Z=1) — measuring 2D parameters",
         "log.3d_stack": "    3D stack: {n} slices — measuring 3D parameters",
@@ -542,16 +513,12 @@ TRANSLATIONS = {
         "log.dapi_not_used": "    DAPI: not used",
         "log.channels_in_analysis": "    Channels in analysis: {ch}",
         "log.optics_title": "\n    Optical parameters",
-        "log.optics_manual": "    Mode: manual",
         "log.optics_no_metadata": "    No optical parameters in metadata",
         "log.optics_cells": "    Cells: NA = {na}, λ = {wl:.1f} nm",
         "log.optics_dapi": "    DAPI:  NA = {na}, λ = {wl:.1f} nm",
         "log.deconv_start": "\n    Running 3D deconvolution...",
-        "log.deconv_dapi_start": "    Running DAPI deconvolution...",
         "log.deconv_slices_deleted": "    Slices removed by your choice: {n} (Z: {z})",
         "log.deconv_all_slices_kept": "    All slices kept",
-        "log.deconv_done": "    Deconvolution and manual selection complete. Stack shape: {shape}",
-        "log.deconv_dapi_done": "    DAPI deconvolution complete. Stack shape: {shape}",
         "log.soma_title": "\n    Soma marking",
         "log.soma_no_points": "    No points added. Segmentation cancelled",
         "log.soma_points_set": "    Points set: {n}",
@@ -616,8 +583,6 @@ TRANSLATIONS = {
         "log.file_summary_time": "    Total time: {t:.1f} s",
         "log.dapi_not_used_msg": "    DAPI not used — nuclei will not be segmented",
         "log.soma_not_marked": "    Somas not marked — file skipped",
-        "log.filter_skip_no_norm": "    Manual filtering skipped (no astro_norm)",
-        "log.filter_skip": "    Manual filtering skipped",
         "log.segmentation_time": "    Segmentation time: {t:.1f} s",
         "log.measurement_time": "    Measurement time: {t:.1f} s",
         "log.error_prefix": "Error: {err}",
@@ -625,7 +590,6 @@ TRANSLATIONS = {
         "log.image_size_failed": "    Failed to determine image size: {err}",
         "log.scale_from_panel": "    Scale from settings: XY = {xy:.4f} µm, Z = {z:.4f} µm",
         "log.analysis_done": "    Analysis complete",
-        "log.analysis_done_title": "Analysis complete",
         "log.metadata_reading": "    Reading metadata: {name}",
         "log.metadata_xy_ok": "    XY = {v:.4f} µm/px",
         "log.metadata_xy_none": "    XY not found — keeping value from settings",
@@ -642,7 +606,6 @@ TRANSLATIONS = {
         "log.soma_auto_starting": "    Auto-detecting somas...",
         "log.soma_auto_found": "    Somas auto-detected: {n}",
         "log.soma_auto_none": "    Auto-detection found no somas — falling back to manual mode",
-        "log.soma_auto_z_layers": "    Soma at (y={y}, x={x}): Z-layers {n}",
 
         "channel.cells": "cells",
         "channel.dapi": "nuclei (DAPI)",
@@ -667,7 +630,6 @@ TRANSLATIONS = {
         "state.off": "disabled",
 
         "ui.settings.title_main": "Choose a file and parameters, then click \"Run analysis\".",
-        "ui.settings.subtitle": "After that, cell segmentation and morphometry will be performed.",
         "ui.settings.file": "File/folder:",
         "ui.settings.browse": "Browse…",
         "ui.settings.load_mode": "Load mode:",
@@ -709,18 +671,9 @@ TRANSLATIONS = {
         "btn.cancel": "Cancel",
         "btn.apply": "Apply",
         "btn.done": "Done",
-        "btn.continue": "Continue",
-        "btn.skip": "Skip",
         "btn.start_analysis": "Start segmentation",
-        "btn.choose": "Choose…",
-        "btn.delete_return_slice": "Delete / Restore slice",
         "btn.to_manual_soma": "To manual soma marking",
 
-        "dlg.files.title": "File selection",
-        "dlg.files.one_or_dir": "Single file or folder?",
-        "dlg.files.one": "Single file",
-        "dlg.files.dir": "Folder with files",
-        "dlg.files.selected_n": "Selected: {n} file(s)",
         "dlg.files.nothing": "Nothing selected.",
         "dlg.files.images": "Images",
         "dlg.files.all": "All files",
@@ -746,19 +699,26 @@ TRANSLATIONS = {
         "dlg.channels.role_granules": "Granules",
         "dlg.channels.role_none": "Not in analysis",
         "dlg.channels.role_used": "Already assigned to another channel",
+
+        "dlg.channels.seg_mode_title": "Cell segmentation method",
+        "dlg.channels.seg_mode_strict": "Strict segmentation",
+        "dlg.channels.seg_mode_strict_hint": "Slower; keeps only bright processes. Suited for high noise levels.",
+        "dlg.channels.seg_mode_soft": "Soft segmentation",
+        "dlg.channels.seg_mode_soft_hint": "Faster; captures any processes but may include noise when it is high.",
+        "log.filter_cut_strict_mode": "    Switched to strict segmentation.",
+        "dlg.filter.prob_make_strict": "Need to make segmentation stricter",
+        "dlg.filter.prob_make_soft": "Need to make segmentation softer",
+        "dlg.filter.warn_make_strict": "Strict segmentation will be applied (bright processes only). If it doesn't help, try reducing noise or changing the image type.",
+        "dlg.filter.warn_make_soft": "Soft segmentation will be applied (captures more processes but is noise-sensitive).",
+
         "dlg.channels.help": (
-            "Pick a role for each channel from the dropdown below the thumbnail.\n"
-            "«Cells» — required role.\n"
-            "«DAPI» — nuclei (optional).\n"
-            "«Granules» — intracellular granules (optional).\n"
-            "«Not in analysis» — channel ignored.\n"
-            "A role already taken by another channel disappears from the list."
+            "Channel role — in the dropdown below the thumbnail.\n"
+            "«Cells» is required; «DAPI» and «Granules» optional.\n"
         ),
 
         "log.granule_channel": "    Granules: channel {idx}",
 
         "dlg.metrics.title": "Metrics to measure",
-        "dlg.metrics.group_targets": "What to measure",
         "dlg.metrics.group_shape_2d_cell": "Cell shape (2D)",
         "dlg.metrics.group_shape_2d_soma": "Soma shape (2D)",
         "dlg.metrics.group_shape_2d_nucleus": "Nucleus shape (2D)",
@@ -778,10 +738,6 @@ TRANSLATIONS = {
         "dlg.metrics.select_none": "Deselect all",
         "dlg.metrics.btn": "Metrics…",
         "dlg.metrics.hint": "Tick metrics to include in CSV. Each group applies only to its own structure.",
-
-        "dlg.metrics.item.target_cell": "Cell",
-        "dlg.metrics.item.target_soma": "Soma",
-        "dlg.metrics.item.target_nucleus": "Nucleus",
 
         "dlg.metrics.item.cell_area": "Cell area",
         "dlg.metrics.item.cell_perimeter": "Cell perimeter",
@@ -870,12 +826,6 @@ TRANSLATIONS = {
         "dlg.metrics.item.granule_spatial": "Granule spatial distribution",
         "dlg.metrics.item.granule_sbr": "Granule SBR",
 
-        "dlg.metrics.group_targets_legacy": "Apply shape/texture to",
-
-        "dlg.dapi.title": "DAPI channel detection",
-        "dlg.dapi.text": "Automatic detection failed.\nClick the channel that contains DAPI:",
-        "dlg.dapi.help": "Click the channel with nuclei.",
-
         "dlg.soma.title": "Soma marking",
         "dlg.soma.counter": "Points: {n}",
         "dlg.soma.coords": "XY = ({y}, {x})",
@@ -900,24 +850,19 @@ TRANSLATIONS = {
         "dlg.slices.badge": "Z = {z}   [{label}]",
         "dlg.slices.toggle": "Delete / Restore slice",
         "dlg.slices.help": "Use the slider.\nThe button toggles the current slice.",
-        "dlg.slices.title_selector": "Choose slices to delete.",
 
         "dlg.filter.prob_not_cells": "Need to delete some segments",
         "dlg.filter.warn_delete": "Deletion screen will open. Click on the objects you want to remove from the analysis.",
         "dlg.filter.delete_title": "Remove extra segments",
         "dlg.filter.delete_help": "Click on an object to remove it from the analysis.",
         "dlg.filter.quality_title": "Segmentation quality",
-        "dlg.filter.quality_ask": "Are you satisfied with the current cell segmentation quality?",
         "dlg.filter.problem_title": "What is the problem?",
         "dlg.filter.problem_ask": "Please specify what went wrong (this will redirect you to the right step):",
         "dlg.filter.prob_fused": "Need to fix somas",
         "dlg.filter.prob_artifacts": "Need to remove extra Z-slices",
-        "dlg.filter.prob_cut": "Need to increase growth aggressiveness",
         "dlg.filter.warn_soma": "Soma correction screen will open. Add missed somas or delete extra ones to split merged cells.",
         "dlg.filter.warn_slices": "Z-slice selection screen will open. Remove slices with artifacts or noise.",
         "dlg.filter.warn_slices_fallback": "Deconvolution was disabled, so you need to go back to settings and restart the analysis to remove artifacts.",
-        "dlg.filter.warn_cut": "Process growth will be boosted (contrast threshold lowered). If it doesn't help, try another image type or reduce deconvolution next time.",
-        "dlg.filter.resegmenting_soft": "    Applying soft process growth correction...",
 
         "entity.cells": "cells",
         "entity.soma": "somas",
@@ -928,7 +873,6 @@ TRANSLATIONS = {
 
         "dlg.unknown": "Unknown dialog: {kind}",
         "log.dialog_error": "DIALOG ERROR: {err}",
-        "log.donut_volume_shape_error": "Expected astro_norm_3d of shape (Z, Y, X)",
 
         "dlg.error.title": "Error",
         "dlg.files.title_short": "Files",
@@ -1075,8 +1019,6 @@ def metric_enabled(cfg, name, is_2d=None):
 
 class AnalysisContext:
     def __init__(self):
-        self.astrocyte_channel = 0
-        self.dapi_channel = 1
         self.cell_type = "astrocytes"
         self.is_2d = False
         self.bridge = None
@@ -1109,15 +1051,13 @@ class AnalysisContext:
         }
         self._current_base_name = None
         self._current_out_dir = None
+        self.segmentation_mode = "strict"
         self.use_aggressive_growth = False
         self._gui_scale_mode = "auto"
-        self._gui_deconv_mode = "auto"
         self._gui_do_filter = True
-        self._gui_settings_locked = False
         self.has_dapi = True
         self.has_granules = False
         self.auto_soma = False
-        self.n_channels_original = 1
         self.cell_channel_idx = None
         self.dapi_channel_idx = None
         self.granule_channel_idx = None
@@ -2030,8 +1970,6 @@ class Optics:
             self.ctx.dapi_channel_idx = None
             self.ctx.granule_channel_idx = None
             self.ctx.selected_channels = [0]
-            self.ctx.astrocyte_channel = 0
-            self.ctx.dapi_channel = 0
             self.ctx.metrics_config = default_metrics_config()
             return
 
@@ -2053,7 +1991,6 @@ class Optics:
                 img = np.transpose(img, (1, 0, 2, 3))
 
         n_ch = img.shape[0]
-        self.ctx.n_channels_original = int(n_ch)
         self.ctx.log(self.ctx.t("log.channels_found", n=n_ch))
 
         if n_ch == 1:
@@ -2063,8 +2000,6 @@ class Optics:
             self.ctx.dapi_channel_idx = None
             self.ctx.granule_channel_idx = None
             self.ctx.selected_channels = [0]
-            self.ctx.astrocyte_channel = 0
-            self.ctx.dapi_channel = 0
             self.ctx.metrics_config = default_metrics_config()
             self.ctx.log(self.ctx.t("log.single_channel"))
             return
@@ -2136,9 +2071,6 @@ class Optics:
                 self.ctx.metrics_config = dict(mc)
             else:
                 self.ctx.metrics_config = default_metrics_config()
-
-        self.ctx.astrocyte_channel = self.ctx.cell_channel_idx
-        self.ctx.dapi_channel = self.ctx.dapi_channel_idx if self.ctx.has_dapi else 0
 
         self.ctx.log(self.ctx.t("log.cells_channel", idx=self.ctx.cell_channel_idx))
         if self.ctx.has_dapi:
@@ -2844,7 +2776,6 @@ class Segmentation:
     def _grow_cells_by_components_strict(self, astro_norm, soma_mask, growth_mask,
                                          unique_ids, dip_hard_threshold=0.5):
         import heapq
-        from scipy.ndimage import laplace
 
         z_dim, y_dim, x_dim = astro_norm.shape
 
@@ -6808,7 +6739,8 @@ class Analyzer:
         try:
             start_time = time.time()
 
-            self.ctx.use_aggressive_growth = False
+            base_seg_mode = getattr(self.ctx, "segmentation_mode", "strict")
+            self.ctx.use_aggressive_growth = (base_seg_mode == "soft")
 
             if not self.ctx.scale_initialized:
                 self.file_io.extract_and_confirm_metadata(filepath)
@@ -7249,13 +7181,16 @@ class Analyzer:
                     r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 1.0)
                     cell_colors[int(cid)] = (r, g, b)
 
+                seg_toggle_target = "soft" if base_seg_mode == "strict" else "strict"
+
                 while True:
                     res = self.ctx.bridge._ask(
                         "quality_check",
                         mip=mip_disp,
                         cell_mip=cell_mip,
                         colors=cell_colors,
-                        mode="cells"
+                        mode="cells",
+                        seg_toggle_target=seg_toggle_target,
                     )
 
                     if res is None or res == "ok":
@@ -7383,8 +7318,12 @@ class Analyzer:
                         continue
 
                     if res == "cut":
-                        self.ctx.log(self.ctx.t("log.filter_cut_soft_mode"))
-                        self.ctx.use_aggressive_growth = True
+                        new_aggressive = (seg_toggle_target == "soft")
+                        if new_aggressive:
+                            self.ctx.log(self.ctx.t("log.filter_cut_soft_mode"))
+                        else:
+                            self.ctx.log(self.ctx.t("log.filter_cut_strict_mode"))
+                        self.ctx.use_aggressive_growth = new_aggressive
                         self.ctx.cells_segmented = self.segmenter._grow_cells_from_soma(astro_norm, self.ctx.soma_segmented)
 
                         cell_mip = np.zeros((astro.shape[1], astro.shape[2]), dtype=np.int32)
@@ -7766,6 +7705,7 @@ class GuiBridge:
                 "has_granules": False,
                 "granule_idx": None,
                 "metrics_config": default_metrics_config(),
+                "segmentation_mode": "strict",
             })
             return
 
@@ -7783,11 +7723,12 @@ class GuiBridge:
             has_dapi_default = False
 
         panel = self.app.start_work_panel(self.app._t("dlg.channels.title"))
+
         tk.Label(panel,
                  text=self.app._t("dlg.channels.instructions"),
                  justify="left", anchor="w",
                  bg=self.app.BG_CARD, fg=self.app.FG,
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 10))
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
 
         scroll_frame = tk.Frame(panel, bg=self.app.BG_CARD)
         scroll_frame.pack(fill="both", expand=True)
@@ -7867,6 +7808,9 @@ class GuiBridge:
                     "has_granules": bool(granule_idx is not None),
                     "granule_idx": int(granule_idx) if granule_idx is not None else None,
                     "metrics_config": dict(self.app._pending_metrics_config),
+                    "segmentation_mode": (
+                        "soft" if self._var_seg_soft.get() else "strict"
+                    ),
                 }
 
         def _set_role(index, new_role):
@@ -7897,15 +7841,22 @@ class GuiBridge:
         def _make_tile_column(index, mip):
             arr = self._to_uint8(mip)
             pil = self._pil_from_gray(arr)
-            w, h, _ = self._fit_size(pil.width, pil.height, max_w=200, max_h=200)
+
+            w, h = pil.size
+            if max(w, h) <= 0:
+                w, h = 64, 64
+
             pil = pil.resize((w, h), Image.BILINEAR)
             photo = ImageTk.PhotoImage(pil)
 
             column = tk.Frame(imgs_frame, bg=self.app.BG_CARD)
             column.pack(side="left", padx=6, pady=2, anchor="n")
 
-            tile_w = w + 8
-            tile_h = h + 8 + 56
+            border_th = 2
+            caption_h = 52
+
+            tile_w = w + 2 * border_th + 6
+            tile_h = h + 2 * border_th + 6 + caption_h
 
             tile = tk.Canvas(column, width=tile_w, height=tile_h,
                              bg=self.app.BG_CARD,
@@ -7921,16 +7872,20 @@ class GuiBridge:
                     border = self.app.BORDER
 
                 tile.create_rectangle(1, 1, tile_w - 1, tile_h - 1,
-                                      outline=border, width=2,
+                                      outline=border, width=border_th,
                                       fill=self.app.BG_SOFT)
-                tile.create_image(4, 4, anchor="nw", image=photo)
+                img_x = (tile_w - w) // 2
+                img_y = border_th + 3
+                tile.create_image(img_x, img_y, anchor="nw", image=photo)
 
-                tile.create_text(tile_w // 2, tile_h - 44,
+                text_y1 = img_y + h + 14
+                text_y2 = img_y + h + 34
+                tile.create_text(tile_w // 2, text_y1,
                                  text=self.app._t("dlg.channels.channel_n", n=index),
                                  fill=self.app.FG,
                                  font=("Segoe UI", 10, "bold"))
                 role_lbl = self.app._t(role_to_key.get(r, "dlg.channels.role_none"))
-                tile.create_text(tile_w // 2, tile_h - 22,
+                tile.create_text(tile_w // 2, text_y2,
                                  text=role_lbl,
                                  fill=role_to_color.get(r, self.app.FG_DIM),
                                  font=("Segoe UI", 9, "bold"))
@@ -7954,8 +7909,167 @@ class GuiBridge:
             dropdown.pack(side="top", pady=(4, 0))
             dropdowns[index] = dropdown
 
+        TILE_CAPTION_H = 52
+        DROPDOWN_EXTRA = 34
+        PADDING_X = 12
+        PADDING_Y = 8
+
+        def _recompute_tile_sizes(_event=None):
+            canvas.update_idletasks()
+            cw = max(1, canvas.winfo_width())
+            ch = max(1, canvas.winfo_height())
+
+            avail_w = max(64, cw - 2 * PADDING_X)
+            avail_h = max(64, ch - 2 * PADDING_Y - TILE_CAPTION_H - DROPDOWN_EXTRA)
+
+            per_col_w = int(avail_w / max(1, n))
+            max_side_from_w = max(48, per_col_w - 20)
+            max_side_from_h = max(48, avail_h)
+
+            side = min(220, max_side_from_w, max_side_from_h)
+
+            for i in range(n):
+                self._last_side = side
+
+            return side
+
+        _initial_side = 160
         for i in range(n):
-            _make_tile_column(i, mips[i])
+            mip = mips[i]
+            arr = self._to_uint8(mip)
+            pil = self._pil_from_gray(arr)
+            w0, h0 = pil.size
+            if max(w0, h0) <= 0:
+                pil = pil.resize((_initial_side, _initial_side), Image.BILINEAR)
+            else:
+                scale = _initial_side / max(w0, h0)
+                pil = pil.resize((max(1, int(w0 * scale)),
+                                  max(1, int(h0 * scale))), Image.BILINEAR)
+
+            fake = np.array(pil)
+            _make_tile_column(i, fake)
+
+        def _rebuild_tiles_for_new_size(new_side):
+            for i in range(n):
+                mip = mips[i]
+                arr = self._to_uint8(mip)
+                pil = self._pil_from_gray(arr)
+                w0, h0 = pil.size
+                if max(w0, h0) <= 0:
+                    pil = pil.resize((new_side, new_side), Image.BILINEAR)
+                else:
+                    scale = new_side / max(w0, h0)
+                    pil = pil.resize((max(1, int(w0 * scale)),
+                                      max(1, int(h0 * scale))), Image.BILINEAR)
+                mips[i] = np.array(pil)
+
+            for w in imgs_frame.winfo_children():
+                w.destroy()
+            tile_drawers.clear()
+            dropdowns.clear()
+
+            for i in range(n):
+                _make_tile_column(i, mips[i])
+
+            _refresh_all()
+            _update_pending_config()
+
+        def _on_canvas_configure(event):
+            new_side = _recompute_tile_sizes(event)
+            if abs(getattr(self, "_last_side", 0) - new_side) >= 16:
+                self._last_side = new_side
+                _rebuild_tiles_for_new_size(new_side)
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        original_mips = list(mips)
+
+        def _reset_mips():
+            for i in range(n):
+                mips[i] = original_mips[i]
+
+        _reset_mips()
+
+        self._var_seg_strict = tk.BooleanVar(value=True)
+        self._var_seg_soft = tk.BooleanVar(value=False)
+
+        def _on_seg_mode_toggle(which):
+            if which == "strict":
+                if not self._var_seg_strict.get():
+                    self._var_seg_strict.set(True)
+                self._var_seg_soft.set(False)
+            else:
+                if not self._var_seg_soft.get():
+                    self._var_seg_soft.set(True)
+                self._var_seg_strict.set(False)
+            _update_pending_config()
+
+        seg_frame = tk.Frame(
+            panel,
+            bg=self.app.BG_CARD,
+            highlightthickness=1,
+            highlightbackground=self.app.BORDER,
+            height=170,
+        )
+        seg_frame.pack(side="top", fill="x", pady=(10, 0), padx=2)
+        seg_frame.pack_propagate(False)
+
+        tk.Label(
+            seg_frame,
+            text=self.app._t("dlg.channels.seg_mode_title"),
+            bg=self.app.BG_CARD, fg=self.app.ACCENT,
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+        ).pack(side="top", anchor="w", padx=8, pady=(6, 2))
+
+        tk.Checkbutton(
+            seg_frame,
+            text=self.app._t("dlg.channels.seg_mode_strict"),
+            variable=self._var_seg_strict,
+            command=lambda: _on_seg_mode_toggle("strict"),
+            bg=self.app.BG_CARD, fg=self.app.FG,
+            activebackground=self.app.BG_CARD,
+            activeforeground=self.app.ACCENT,
+            selectcolor=self.app.BG_SOFT,
+            relief="flat", bd=0,
+            font=("Segoe UI", 9),
+            anchor="w", justify="left",
+            highlightthickness=0,
+            cursor="hand2",
+        ).pack(side="top", anchor="w", padx=8, pady=(0, 0))
+
+        tk.Label(
+            seg_frame,
+            text=self.app._t("dlg.channels.seg_mode_strict_hint"),
+            bg=self.app.BG_CARD, fg=self.app.FG_DIM,
+            font=("Segoe UI", 8, "italic"),
+            anchor="w", justify="left", wraplength=520,
+        ).pack(side="top", anchor="w", padx=28, pady=(0, 4))
+
+        tk.Checkbutton(
+            seg_frame,
+            text=self.app._t("dlg.channels.seg_mode_soft"),
+            variable=self._var_seg_soft,
+            command=lambda: _on_seg_mode_toggle("soft"),
+            bg=self.app.BG_CARD, fg=self.app.FG,
+            activebackground=self.app.BG_CARD,
+            activeforeground=self.app.ACCENT,
+            selectcolor=self.app.BG_SOFT,
+            relief="flat", bd=0,
+            font=("Segoe UI", 9),
+            anchor="w", justify="left",
+            highlightthickness=0,
+            cursor="hand2",
+        ).pack(side="top", anchor="w", padx=8, pady=(0, 0))
+
+        tk.Label(
+            seg_frame,
+            text=self.app._t("dlg.channels.seg_mode_soft_hint"),
+            bg=self.app.BG_CARD, fg=self.app.FG_DIM,
+            font=("Segoe UI", 8, "italic"),
+            anchor="w", justify="left", wraplength=520,
+        ).pack(side="top", anchor="w", padx=28, pady=(0, 4))
 
         _refresh_all()
         _update_pending_config()
@@ -7993,6 +8107,9 @@ class GuiBridge:
             self.app._pending_metrics_config = dict(self.app._pending_metrics_config)
             if "metrics_config" in cfg:
                 cfg["metrics_config"] = dict(self.app._pending_metrics_config)
+            cfg["segmentation_mode"] = (
+                "soft" if self._var_seg_soft.get() else "strict"
+            )
 
             self.app.stop_work_panel()
             self._ok(cfg)
@@ -8708,6 +8825,7 @@ class GuiBridge:
         colors = kw["colors"]
         mode = kw.get("mode", "cells")
         gran_mip = kw.get("gran_mip", None)
+        seg_toggle_target = kw.get("seg_toggle_target", "strict")
 
         if mode == "soma":
             entity = self.app._t("entity.soma")
@@ -8806,8 +8924,14 @@ class GuiBridge:
                               active_bg=self.app.WARN).pack(pady=6, anchor="w")
 
             if mode == "cells":
-                RoundedButton(panel2, self.app._t("dlg.filter.prob_cut"),
-                              command=lambda: choose("cut", "dlg.filter.warn_cut"),
+                cut_label_key = ("dlg.filter.prob_make_strict"
+                                 if seg_toggle_target == "strict"
+                                 else "dlg.filter.prob_make_soft")
+                cut_warn_key = ("dlg.filter.warn_make_strict"
+                                if seg_toggle_target == "strict"
+                                else "dlg.filter.warn_make_soft")
+                RoundedButton(panel2, self.app._t(cut_label_key),
+                              command=lambda: choose("cut", cut_warn_key),
                               width=500, height=40, radius=20,
                               bg=self.app.BG_SOFT, fg=self.app.FG,
                               hover_bg=self.app.WARN, hover_fg="#1a1c22",
@@ -11340,14 +11464,6 @@ class App:
             analyzer.ctx.lang = self.var_lang.get()
             analyzer.ctx.app = self
 
-            analyzer.ctx.cell_type = cfg["cell_type"]
-            if cfg["cell_type"] == "astrocytes":
-                analyzer.ctx.cell_type_ru = self._t("cell.astrocytes")
-            elif cfg["cell_type"] == "microglia":
-                analyzer.ctx.cell_type_ru = self._t("cell.microglia")
-            else:
-                analyzer.ctx.cell_type_ru = self._t("cell.neurons")
-
             analyzer.ctx.image_mode = cfg["image_mode"]
             analyzer.ctx.deconvolve_images = cfg["use_deconv"]
 
@@ -11387,6 +11503,7 @@ class App:
                 analyzer.ctx.dapi_channel_idx = ch_cfg.get("dapi_idx")
                 analyzer.ctx.has_granules = ch_cfg.get("has_granules", False)
                 analyzer.ctx.granule_channel_idx = ch_cfg.get("granule_idx")
+                analyzer.ctx.segmentation_mode = ch_cfg.get("segmentation_mode", "strict")
 
                 analyzer.ctx.selected_channels = [analyzer.ctx.cell_channel_idx]
                 if analyzer.ctx.has_dapi and analyzer.ctx.dapi_channel_idx is not None:
