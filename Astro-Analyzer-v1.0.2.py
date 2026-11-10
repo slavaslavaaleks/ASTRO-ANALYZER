@@ -288,9 +288,9 @@ TRANSLATIONS = {
 
         "dlg.channels.seg_mode_title": "Метод сегментации клеток",
         "dlg.channels.seg_mode_strict": "Строгая сегментация",
-        "dlg.channels.seg_mode_strict_hint": "Работает медленнее, выделяет только яркие отростки. Подходит при большом уровне шума.",
+        "dlg.channels.seg_mode_strict_hint": "Выделяет только яркие отростки. Подходит при большом уровне шума.",
         "dlg.channels.seg_mode_soft": "Мягкая сегментация",
-        "dlg.channels.seg_mode_soft_hint": "Работает быстрее, выделяет любые отростки, но может захватывать шум при высоком его уровне.",
+        "dlg.channels.seg_mode_soft_hint": "Выделяет любые отростки, но может захватывать шум при высоком его уровне.",
         "log.filter_cut_strict_mode": "    Сегментация переключена на строгую.",
         "dlg.filter.prob_make_strict": "Нужно сделать сегментацию строже",
         "dlg.filter.prob_make_soft": "Нужно сделать сегментацию мягче",
@@ -702,9 +702,9 @@ TRANSLATIONS = {
 
         "dlg.channels.seg_mode_title": "Cell segmentation method",
         "dlg.channels.seg_mode_strict": "Strict segmentation",
-        "dlg.channels.seg_mode_strict_hint": "Slower; keeps only bright processes. Suited for high noise levels.",
+        "dlg.channels.seg_mode_strict_hint": "Keeps only bright processes. Suited for high noise levels.",
         "dlg.channels.seg_mode_soft": "Soft segmentation",
-        "dlg.channels.seg_mode_soft_hint": "Faster; captures any processes but may include noise when it is high.",
+        "dlg.channels.seg_mode_soft_hint": "Captures any processes but may include noise when it is high.",
         "log.filter_cut_strict_mode": "    Switched to strict segmentation.",
         "dlg.filter.prob_make_strict": "Need to make segmentation stricter",
         "dlg.filter.prob_make_soft": "Need to make segmentation softer",
@@ -2776,9 +2776,9 @@ class Segmentation:
     def _grow_cells_by_components_strict(self, astro_norm, soma_mask, growth_mask,
                                          unique_ids, dip_hard_threshold=0.5):
         import heapq
+        from scipy.ndimage import maximum_filter, uniform_filter
 
         z_dim, y_dim, x_dim = astro_norm.shape
-
         astro = astro_norm.astype(np.float32)
 
         if self.ctx.scale_initialized:
@@ -2791,11 +2791,7 @@ class Segmentation:
             z_um = 1.0
 
         sigma_xy_bg = max(30, min(y_dim, x_dim) // 15)
-        local_mean = uniform_filter(
-            astro,
-            size=(3, sigma_xy_bg, sigma_xy_bg),
-            mode='reflect'
-        )
+        local_mean = uniform_filter(astro, size=(3, sigma_xy_bg, sigma_xy_bg), mode='reflect')
         local_mean = np.maximum(local_mean, 1e-6)
 
         bg1 = gaussian_filter(astro, sigma=(1.0, sigma_xy_bg, sigma_xy_bg), mode='reflect')
@@ -2809,9 +2805,7 @@ class Segmentation:
         conf = np.clip((noise_ratio - 1.0) / 0.35, 0.0, 1.0).astype(np.float32)
 
         dip_mask = astro < (local_mean * 0.5)
-
         soma_bool = (soma_mask > 0)
-
         graph_mask = (growth_mask | soma_bool) & (~dip_mask)
         graph_mask = graph_mask | soma_bool
 
@@ -2819,17 +2813,12 @@ class Segmentation:
             self.ctx.log(self.ctx.t("log.cells_no_growth"))
             return soma_mask.astype(np.int32)
 
-        from skimage.filters import threshold_otsu
-
         def _exclude_dips_and_otsu(mask_in, astro_in, soma_in, xy_scale):
             z_d, y_d, x_d = astro_in.shape
             mask_out = mask_in.copy()
 
             line_len_um = 2.0
             half_len_px = max(1, int(round((line_len_um / 2.0) / max(xy_scale, 1e-6))))
-
-            if half_len_px < 1:
-                half_len_px = 1
 
             directions = [(0, 1), (1, 1), (1, 0), (1, -1)]
 
@@ -2839,15 +2828,12 @@ class Segmentation:
                     continue
 
                 sl_pad = np.pad(sl, half_len_px, mode='edge')
-
-                center_vals = sl_pad[half_len_px:half_len_px + y_d,
-                half_len_px:half_len_px + x_d]
+                center_vals = sl_pad[half_len_px:half_len_px + y_d, half_len_px:half_len_px + x_d]
 
                 has_dip = np.zeros((y_d, x_d), dtype=bool)
 
                 for dy, dx in directions:
                     vals_min = np.full((y_d, x_d), np.inf, dtype=np.float32)
-
                     for t in range(-half_len_px, half_len_px + 1):
                         if t == 0:
                             continue
@@ -2861,6 +2847,8 @@ class Segmentation:
 
                 mask_out[z][has_dip] = False
 
+                otsu_votes = np.zeros((y_d, x_d), dtype=np.int8)
+
                 for win_um in (5.0, 10.0, 15.0):
                     win_px = max(3, int(round(win_um / max(xy_scale, 1e-6))))
                     if win_px % 2 == 0:
@@ -2871,29 +2859,27 @@ class Segmentation:
 
                     sl_pad_w = np.pad(sl, hw, mode='reflect')
 
-                    is_otsu_out = np.zeros((y_d, x_d), dtype=bool)
+                    win_mean = uniform_filter(sl_pad_w, size=win_px, mode='nearest')
+                    win_mean = win_mean[hw:hw + y_d, hw:hw + x_d]
 
-                    for y in range(y_d):
-                        for x in range(x_d):
-                            if center_vals[y, x] <= 0:
-                                continue
-                            win = sl_pad_w[y:y + win_px, x:x + win_px]
-                            nz = win[win > 0]
-                            if nz.size < 10:
-                                continue
-                            try:
-                                thr = float(threshold_otsu(nz))
-                            except Exception:
-                                thr = float(np.median(nz))
-                            if center_vals[y, x] < thr:
-                                is_otsu_out[y, x] = True
+                    win_max = maximum_filter(sl_pad_w, size=win_px, mode='nearest')
+                    win_max = win_max[hw:hw + y_d, hw:hw + x_d]
 
-                    if win_um == 5.0:
-                        votes = is_otsu_out.astype(np.int32)
-                    else:
-                        votes += is_otsu_out.astype(np.int32)
+                    win_min = -maximum_filter(-sl_pad_w, size=win_px, mode='nearest')
+                    win_min = win_min[hw:hw + y_d, hw:hw + x_d]
 
-                mask_out[z][votes >= 2] = False
+                    need_otsu = (center_vals > 0) & mask_out[z]
+
+                    if not np.any(need_otsu):
+                        continue
+
+                    thr_approx = win_mean
+                    is_dark = center_vals < (win_min + 0.5 * (win_max - win_min))
+                    below_thr = (center_vals < thr_approx) | is_dark
+
+                    otsu_votes[need_otsu & below_thr] += 1
+
+                mask_out[z][otsu_votes >= 2] = False
                 mask_out[z][soma_in[z]] = True
 
             return mask_out
@@ -2926,7 +2912,7 @@ class Segmentation:
                         for dx in (-1, 0, 1)
                         if not (dz == 0 and dy == 0 and dx == 0)]
 
-        def _make_slices(dz, dy, dx):
+        def _shifted_abs_diff_into(out, dz, dy, dx):
             src_s = [slice(None), slice(None), slice(None)]
             dst_s = [slice(None), slice(None), slice(None)]
 
@@ -2951,29 +2937,26 @@ class Segmentation:
                 src_s[2] = slice(-dx, x_dim)
                 dst_s[2] = slice(0, x_dim + dx)
 
-            return tuple(src_s), tuple(dst_s)
+            src_s = tuple(src_s)
+            dst_s = tuple(dst_s)
 
-        def _shifted_abs_diff(dz, dy, dx):
-            src_s, dst_s = _make_slices(dz, dy, dx)
-            shifted = np.zeros_like(astro)
-            shifted[dst_s] = astro[src_s]
-            return np.abs(shifted - astro).astype(np.float32)
+            out[dst_s] = np.abs(astro[src_s] - astro[dst_s]).astype(np.float32)
+            return out
 
         diff_max = np.zeros((z_dim, y_dim, x_dim), dtype=np.float32)
+        tmp = np.zeros_like(diff_max)
         for dz, dy, dx in neighbors_26:
-            diff = _shifted_abs_diff(dz, dy, dx)
-            diff_max = np.maximum(diff_max, diff)
+            _shifted_abs_diff_into(tmp, dz, dy, dx)
+            np.maximum(diff_max, tmp, out=diff_max)
 
         threshold = 0.5 * diff_max
 
         diff_big_count = np.zeros((z_dim, y_dim, x_dim), dtype=np.int32)
         for dz, dy, dx in neighbors_26:
-            diff = _shifted_abs_diff(dz, dy, dx)
-            big = diff > threshold
-            diff_big_count += big.astype(np.int32)
+            _shifted_abs_diff_into(tmp, dz, dy, dx)
+            diff_big_count += (tmp > threshold).astype(np.int32)
 
         n_total = len(neighbors_26)
-        n_big = diff_big_count
         n_small = n_total - diff_big_count
         n_small = np.maximum(n_small, 0)
 
