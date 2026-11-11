@@ -202,12 +202,6 @@ TRANSLATIONS = {
         "log.deconv_all_slices_kept_channel": "    Канал {ch}: все срезы оставлены",
         "dlg.slices.title_selector_channel": "Выберите срезы для удаления — {ch}.",
 
-        "cell.astrocytes": "астроцитов",
-        "cell.microglia": "микроглии",
-        "cell.astrocytes_label": "Астроциты",
-        "cell.microglia_label": "Микроглия",
-        "cell.neurons": "нейронов",
-        "cell.neurons_label": "Нейроны",
         "mode.confocal": "Конфокальный",
         "mode.epifluorescence": "Эпифлуоресцентный",
         "mode.confocal_full": "конфокальный",
@@ -223,7 +217,6 @@ TRANSLATIONS = {
         "ui.settings.load_dir": "Папка",
         "ui.settings.metadata": "Метаданные:",
         "ui.settings.read_metadata": "Прочитать из файла",
-        "ui.settings.cell_type": "Тип клеток:",
         "ui.settings.image_mode": "Тип изображения:",
         "ui.settings.deconv": "Деконволюция:",
         "ui.settings.use_deconv": "Применять 3D-деконволюцию перед анализом",
@@ -616,12 +609,6 @@ TRANSLATIONS = {
         "log.deconv_all_slices_kept_channel": "    Channel {ch}: all slices kept",
         "dlg.slices.title_selector_channel": "Choose slices to delete — {ch}.",
 
-        "cell.astrocytes": "astrocytes",
-        "cell.microglia": "microglia",
-        "cell.astrocytes_label": "Astrocytes",
-        "cell.microglia_label": "Microglia",
-        "cell.neurons": "neurons",
-        "cell.neurons_label": "Neurons",
         "mode.confocal": "Confocal",
         "mode.epifluorescence": "Epifluorescence",
         "mode.confocal_full": "confocal",
@@ -637,7 +624,6 @@ TRANSLATIONS = {
         "ui.settings.load_dir": "Folder",
         "ui.settings.metadata": "Metadata:",
         "ui.settings.read_metadata": "Read from file",
-        "ui.settings.cell_type": "Cell type:",
         "ui.settings.image_mode": "Image type:",
         "ui.settings.deconv": "Deconvolution:",
         "ui.settings.use_deconv": "Apply 3D deconvolution before analysis",
@@ -4907,9 +4893,6 @@ class Measurements:
     def __init__(self, ctx):
         self.ctx = ctx
 
-    def _get_cell_suffix(self):
-        return self.ctx.cell_type
-
     def _get_dim_suffix(self):
         return "2d" if self.ctx.is_2d else "3d"
 
@@ -6189,9 +6172,8 @@ class Measurements:
         if measurements is None or len(measurements) == 0:
             return
 
-        suffix = self._get_cell_suffix()
         dim_suffix = self._get_dim_suffix()
-        out_dir = os.path.join(os.path.dirname(filepath), f"all_results_{suffix}_{dim_suffix}")
+        out_dir = os.path.join(os.path.dirname(filepath), f"all_results_{dim_suffix}")
         os.makedirs(out_dir, exist_ok=True)
 
         all_csv = os.path.join(out_dir, "all_measurements.csv")
@@ -6217,9 +6199,8 @@ class Measurements:
                                 path=all_csv, n=len(combined)))
 
     def _append_summary_count(self, filepath, cells_count):
-        suffix = self._get_cell_suffix()
         dim_suffix = self._get_dim_suffix()
-        out_dir = os.path.join(os.path.dirname(filepath), f"all_results_{suffix}_{dim_suffix}")
+        out_dir = os.path.join(os.path.dirname(filepath), f"all_results_{dim_suffix}")
         os.makedirs(out_dir, exist_ok=True)
 
         summary_csv = os.path.join(out_dir, "summary_cell_counts.csv")
@@ -6831,10 +6812,9 @@ class Analyzer:
                     self.ctx.downsample = 1
 
                 base_probe = os.path.splitext(os.path.basename(filepath))[0]
-                suffix_probe = self.measurer._get_cell_suffix()
                 pre_dir = os.path.join(
                     os.path.dirname(filepath),
-                    f"{base_probe}_{suffix_probe}_analysis"
+                    f"{base_probe}_analysis"
                 )
                 os.makedirs(pre_dir, exist_ok=True)
                 crop_meta_path = os.path.join(pre_dir, "crop_info.txt")
@@ -6907,7 +6887,7 @@ class Analyzer:
 
             base = os.path.splitext(os.path.basename(filepath))[0]
             suffix = self.measurer._get_cell_suffix()
-            out_dir = os.path.join(os.path.dirname(filepath), f"{base}_{suffix}_analysis")
+            out_dir = os.path.join(os.path.dirname(filepath), f"{base}_analysis")
             os.makedirs(out_dir, exist_ok=True)
 
             self.ctx._current_base_name = base
@@ -10556,21 +10536,6 @@ class App:
         self.btn_read_metadata.pack(side="left")
         self._settings_buttons.append((self.btn_read_metadata, "ui.settings.read_metadata"))
 
-        row = self._row(s, "ui.settings.cell_type")
-        self.var_cell_type = tk.StringVar(value="astrocytes")
-        self.chip_astro = Chip(row, self._t("cell.astrocytes_label"), "astrocytes",
-                               self.var_cell_type)
-        self.chip_astro.pack(side="left")
-        self.chip_microglia = Chip(row, self._t("cell.microglia_label"), "microglia",
-                                   self.var_cell_type)
-        self.chip_microglia.pack(side="left", padx=8)
-        self.chip_neurons = Chip(row, self._t("cell.neurons_label"), "neurons",
-                                 self.var_cell_type)
-        self.chip_neurons.pack(side="left")
-        self._settings_chips.append((self.chip_astro, "cell.astrocytes_label"))
-        self._settings_chips.append((self.chip_microglia, "cell.microglia_label"))
-        self._settings_chips.append((self.chip_neurons, "cell.neurons_label"))
-
         row = self._row(s, "ui.settings.image_mode")
         self.var_image_mode = tk.StringVar(value="confocal")
         self.chip_confocal = Chip(row, self._t("mode.confocal"), "confocal",
@@ -11398,7 +11363,6 @@ class App:
         return {
             "path": self.var_file_path.get().strip(),
             "load_mode": self.var_load_mode.get(),
-            "cell_type": self.var_cell_type.get(),
             "image_mode": self.var_image_mode.get(),
             "use_deconv": bool(self.var_use_deconv.get()),
             "xy_um": f(self.var_xy.get()),
