@@ -10159,7 +10159,6 @@ class App:
             ]
         return canvas.create_polygon(pts, smooth=True, **kw)
 
-
     def _build_header(self, parent):
         header_row = tk.Frame(parent, bg=self.BG)
         header_row.pack(fill="x", pady=(0, 10))
@@ -10189,9 +10188,15 @@ class App:
         header.pack(side="left", fill="x", expand=True)
 
         self._logo_photo = None
+
+        try:
+            _base_dir = os.path.dirname(os.path.abspath(__file__))
+        except NameError:
+            _base_dir = os.getcwd()
+
         logo_path_candidates = [
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab_logo.png"),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png"),
+            os.path.join(_base_dir, "lab_logo.png"),
+            os.path.join(_base_dir, "logo.png"),
         ]
         logo_path = next((p for p in logo_path_candidates if os.path.exists(p)), None)
 
