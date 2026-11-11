@@ -6886,7 +6886,6 @@ class Analyzer:
                     granules_stack = gran_norm_clean
 
             base = os.path.splitext(os.path.basename(filepath))[0]
-            suffix = self.measurer._get_cell_suffix()
             out_dir = os.path.join(os.path.dirname(filepath), f"{base}_analysis")
             os.makedirs(out_dir, exist_ok=True)
 
