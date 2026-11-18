@@ -112,7 +112,7 @@ TRANSLATIONS = {
         "log.soma_starting": "    Сегментация сом...",
         "log.nuclei_title": "    Сегментация ядер...",
         "log.nuclei_no_dapi": "    DAPI-канал не используется — ядра не сегментируются",
-        "log.nuclei_no_soma": "    Сомы не найдены",
+        "log.nuclei_no_soma": "    Ядра не найдены",
         "log.nuclei_found": "    Ядер найдено: {n}",
         "log.cells_title": "    Сегментация клеток...",
         "log.cells_no_soma": "    Сомы не найдены",
@@ -519,7 +519,7 @@ TRANSLATIONS = {
         "log.soma_starting": "    Segmenting somas...",
         "log.nuclei_title": "    Segmenting nuclei...",
         "log.nuclei_no_dapi": "    DAPI channel not used — nuclei are not segmented",
-        "log.nuclei_no_soma": "    No somas found",
+        "log.nuclei_no_soma": "    No nuclei found",
         "log.nuclei_found": "    Nuclei found: {n}",
         "log.cells_title": "    Segmenting cells...",
         "log.cells_no_soma": "    No somas found",
@@ -2120,10 +2120,23 @@ class Deconvolution:
     def _deconvolve_3d_stack(self, image_stack, channel_label_key="channel.cells"):
         self.ctx.log(self.ctx.t("log.deconv_start_channel", ch=self.ctx.t(channel_label_key)))
 
-        z_dim, y_dim, x_dim = image_stack.shape
+        na = self.ctx._deconv_params.get('na', 0.95)
+        emission_um = self.ctx._deconv_params.get('emission_wavelength_um', 0.460)
 
-        sigma_xy_bg = 2.0
-        sigma_z_bg = 5.0
+        sxy = getattr(self.ctx, 'xy_scale_um', 1.0) or 1.0
+        sz  = getattr(self.ctx, 'z_scale_um', 1.0) or 1.0
+
+        if na > 0 and emission_um > 0:
+            sigma_xy_bg = 6.1 * emission_um / (na * sxy)
+            sigma_z_bg  = 36.6 * emission_um / (na * na * sz)
+        else:
+            sigma_xy_bg = 2.0
+            sigma_z_bg  = 5.0
+
+        sigma_xy_bg = max(0.3, min(sigma_xy_bg, 3.0))
+        sigma_z_bg  = max(0.5, min(sigma_z_bg, 5.0))
+
+
         radius_xy_bg = int(sigma_xy_bg * 3) + 1
         radius_z_bg = int(sigma_z_bg * 3) + 1
 
@@ -7406,16 +7419,16 @@ class Analyzer:
                         gran_mip = np.max(gran_mask_all, axis=0)
                         continue
 
-            self.viz._save_slices_visualization(astro, self.ctx.soma_segmented,
-                                                self.ctx.t("log.title_soma_slices"),
-                                                "soma_slices")
-            if self.ctx.has_dapi and self.ctx.nuclei_segmented.max() > 0:
-                self.viz._save_slices_visualization(dapi, self.ctx.nuclei_segmented,
-                                                    self.ctx.t("log.title_nuclei_slices"),
-                                                    "nuclei_slices")
-            self.viz._save_slices_visualization(astro, self.ctx.cells_segmented,
-                                                self.ctx.t("log.title_cells_slices"),
-                                                "cells_slices")
+            #self.viz._save_slices_visualization(astro, self.ctx.soma_segmented,
+                                                #self.ctx.t("log.title_soma_slices"),
+                                                #"soma_slices")
+            #if self.ctx.has_dapi and self.ctx.nuclei_segmented.max() > 0:
+                #self.viz._save_slices_visualization(dapi, self.ctx.nuclei_segmented,
+                                                    #self.ctx.t("log.title_nuclei_slices"),
+                                                    #"nuclei_slices")
+            #self.viz._save_slices_visualization(astro, self.ctx.cells_segmented,
+                                                #self.ctx.t("log.title_cells_slices"),
+                                                #"cells_slices")
 
             self.viz._save_cells_overlay_stack(astro, self.ctx.cells_segmented, base, out_dir)
 
