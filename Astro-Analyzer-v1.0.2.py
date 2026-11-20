@@ -971,7 +971,7 @@ def default_metrics_config(is_2d=None):
         "soma_eccentricity",
         "nucleus_area", "nucleus_perimeter", "nucleus_solidity",
         "nucleus_elongation", "nucleus_form_factor", "nucleus_roundness",
-        "nucleus_eccentricity",
+        "nucleus_eccentricity", "cell_process", "granule_size_count",
     ]
     basic_3d = [
         "cell_volume", "cell_surface", "cell_sphericity",
