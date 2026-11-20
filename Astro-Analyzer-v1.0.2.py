@@ -6160,22 +6160,76 @@ class Measurements:
         return df.drop(columns=[c for c in drop if c in df.columns],
                        errors="ignore")
 
-    def count_processes_ellipsoid_method(self, cell_mask, nucleus_mask):
-        nucleus_props = measure.regionprops(nucleus_mask.astype(int))[0]
-        nz, ny, nx = nucleus_props.centroid
-        nz, ny, nx = int(round(nz)), int(round(ny)), int(round(nx))
 
-        nucleus_coords = np.argwhere(nucleus_mask)
-        if len(nucleus_coords) > 0:
-            z_range = nucleus_coords[:, 0].max() - nucleus_coords[:, 0].min() + 1
-            y_range = nucleus_coords[:, 1].max() - nucleus_coords[:, 1].min() + 1
-            x_range = nucleus_coords[:, 2].max() - nucleus_coords[:, 2].min() + 1
+    def count_processes_ellipsoid_method(self, cell_mask, soma_mask):
 
-            soma_radius_z = max(3, z_range // 2 + 2)
-            soma_radius_y = max(5, y_range // 2 + 3)
-            soma_radius_x = max(5, x_range // 2 + 3)
+        cell_mask = np.asarray(cell_mask)
+        soma_mask = np.asarray(soma_mask)
+
+        if cell_mask.ndim != 3 or soma_mask.shape != cell_mask.shape:
+            return {
+                'process_max_count': 0,
+                'process_max_radius': 0,
+            }
+
+        cell_ids = np.unique(cell_mask)
+        cell_ids = cell_ids[cell_ids > 0]
+
+        soma_ids = np.unique(soma_mask)
+        soma_ids = soma_ids[soma_ids > 0]
+
+        if len(soma_ids) == 0:
+            return {
+                'process_max_count': 0,
+                'process_max_radius': 0,
+            }
+
+        common_ids = np.intersect1d(cell_ids, soma_ids)
+
+        if len(common_ids) > 0:
+            selected_id = common_ids[0]
+            selected_soma = soma_mask == selected_id
+
+            if len(cell_ids) > 0:
+                selected_cell = cell_mask == selected_id
+            else:
+                selected_cell = cell_mask > 0
+
+        elif len(soma_ids) == 1:
+            selected_id = soma_ids[0]
+            selected_soma = soma_mask == selected_id
+            selected_cell = cell_mask > 0
+
         else:
-            soma_radius_z, soma_radius_y, soma_radius_x = 3, 5, 5
+            best_overlap = -1
+            selected_soma = None
+
+            for sid in soma_ids:
+                candidate = soma_mask == sid
+                overlap = np.count_nonzero(candidate & (cell_mask > 0))
+
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    selected_soma = candidate
+
+            if selected_soma is None or best_overlap <= 0:
+                return {
+                    'process_max_count': 0,
+                    'process_max_radius': 0,
+                }
+
+            selected_cell = cell_mask > 0
+
+        if not np.any(selected_soma) or not np.any(selected_cell):
+            return {
+                'process_max_count': 0,
+                'process_max_radius': 0,
+            }
+
+        soma_coords = np.argwhere(selected_soma)
+
+        nz, ny, nx = np.mean(soma_coords, axis=0)
+        nz, ny, nx = int(round(nz)), int(round(ny)), int(round(nx))
 
         if self.ctx.scale_initialized:
             xy_scale = self.ctx.xy_scale_um * self.ctx.downsample
@@ -6188,92 +6242,154 @@ class Measurements:
             step_um = 2.5
             step_px = max(2, int(step_um / xy_scale))
 
-            radii_xy = np.arange(min_radius_px, max_radius_px + step_px, step_px)
+            radii_xy = np.arange(
+                min_radius_px,
+                max_radius_px + step_px,
+                step_px
+            )
         else:
             z_scale = 2.0
             radii_xy = np.arange(5, 40, 2)
 
         process_counts = []
+
         z_dim, y_dim, x_dim = cell_mask.shape
 
+        soma_exclusion_mask = binary_dilation(
+            selected_soma,
+            iterations=2
+        )
+
         for r_xy in radii_xy:
+
             if self.ctx.is_2d:
-                ellipsoid = np.zeros((z_dim, y_dim, x_dim), dtype=bool)
+
+                ellipsoid = np.zeros(
+                    (z_dim, y_dim, x_dim),
+                    dtype=bool
+                )
+
                 y_min = max(0, ny - r_xy)
                 y_max = min(y_dim, ny + r_xy + 1)
+
                 x_min = max(0, nx - r_xy)
                 x_max = min(x_dim, nx + r_xy + 1)
+
                 for y in range(y_min, y_max):
                     dy = (y - ny) / r_xy
                     dy2 = dy * dy
+
                     if dy2 > 1:
                         continue
+
                     for x in range(x_min, x_max):
                         dx = (x - nx) / r_xy
+
                         if dx * dx + dy2 <= 1:
                             ellipsoid[0, y, x] = True
+
             else:
+
                 r_z = max(2, int(r_xy / z_scale))
-                ellipsoid = np.zeros((z_dim, y_dim, x_dim), dtype=bool)
+
+                ellipsoid = np.zeros(
+                    (z_dim, y_dim, x_dim),
+                    dtype=bool
+                )
+
                 z_min = max(0, nz - r_z)
                 z_max = min(z_dim, nz + r_z + 1)
+
                 y_min = max(0, ny - r_xy)
                 y_max = min(y_dim, ny + r_xy + 1)
+
                 x_min = max(0, nx - r_xy)
                 x_max = min(x_dim, nx + r_xy + 1)
+
                 for z in range(z_min, z_max):
                     dz = (z - nz) / r_z
                     dz2 = dz * dz
+
                     if dz2 > 1:
                         continue
+
                     for y in range(y_min, y_max):
                         dy = (y - ny) / r_xy
                         dy2 = dy * dy
+
                         if dz2 + dy2 > 1:
                             continue
+
                         for x in range(x_min, x_max):
                             dx = (x - nx) / r_xy
+
                             if dx * dx + dy2 + dz2 <= 1:
                                 ellipsoid[z, y, x] = True
 
-            soma_mask = binary_dilation(nucleus_mask, iterations=2)
-            intersection = ellipsoid & cell_mask & ~soma_mask
+            intersection = (
+                    ellipsoid
+                    & selected_cell
+                    & ~soma_exclusion_mask
+            )
 
             if intersection.sum() > 5:
-                labeled_intersect, _ = label(intersection,
-                                             structure=np.ones((3, 3, 3)))
+
+                labeled_intersect, _ = label(
+                    intersection,
+                    structure=np.ones((3, 3, 3))
+                )
+
                 props = measure.regionprops(labeled_intersect)
+
                 valid_components = 0
+
                 for prop in props:
                     if prop.area >= 5:
+
                         if hasattr(prop, 'inertia_tensor_eigenvalues'):
                             ev = prop.inertia_tensor_eigenvalues
+
                             if len(ev) >= 3 and ev[0] > 0:
                                 elongation = ev[2] / ev[0]
+
                                 if elongation > 1.5:
                                     valid_components += 1
                             else:
                                 valid_components += 1
                         else:
                             valid_components += 1
-                process_counts.append({'count': valid_components})
+
+                process_counts.append({
+                    'count': valid_components
+                })
+
             else:
-                process_counts.append({'count': 0})
+                process_counts.append({
+                    'count': 0
+                })
 
         if len(process_counts) > 0:
+
             counts = [p['count'] for p in process_counts]
+
             max_processes = max(counts)
             max_idx = np.argmax(counts)
-            max_radius = radii_xy[max_idx] if max_idx < len(radii_xy) else 0
+
+            max_radius = (
+                radii_xy[max_idx]
+                if max_idx < len(radii_xy)
+                else 0
+            )
+
             return {
                 'process_max_count': max_processes,
                 'process_max_radius': max_radius,
             }
-        else:
-            return {
-                'process_max_count': 0,
-                'process_max_radius': 0,
-            }
+
+        return {
+            'process_max_count': 0,
+            'process_max_radius': 0,
+        }
 
     def _append_to_all_measurements(self, measurements, filepath):
         if measurements is None or len(measurements) == 0:
