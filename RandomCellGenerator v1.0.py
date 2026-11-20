@@ -23,7 +23,7 @@ except Exception:
 
 try:
     import tkinter as tk
-    from tkinter import filedialog, messagebox
+    from tkinter import filedialog, messagebox, ttk
     _HAS_TK = True
 except Exception:
     _HAS_TK = False
@@ -377,6 +377,7 @@ def make_cell_local(shape, cfg, cell_id, rng, center):
     spec._nuc_mask = nuc_mask
     return spec
 
+
 def _paste_into_stack(spec, cells_stack, dapi_stack, intensity_soma, intensity_proc):
     z0, z1, y0, y1, x0, x1 = spec._box
     sub = cells_stack[z0:z1, y0:y1, x0:x1]
@@ -415,6 +416,7 @@ def _add_background(cells, dapi, cfg, rng):
     dapi = dapi + bg * 0.5
 
     return cells, dapi
+
 
 def _generate_one_image(cfg, img_idx):
     rng = random.Random(cfg.seed * 1000003 + img_idx)
@@ -514,7 +516,7 @@ def generate_base_bundle(out_dir, cfg, verbose=True, progress_cb=None):
             d["seed_visible"] = True
             all_rows.append(d)
 
-        msg = f"[base {img_idx + 1}/{cfg.n_images}] {fname}: {len(specs)} клеток"
+        msg = f"[base {img_idx + 1}/{cfg.n_images}] {fname}: {len(specs)} cells"
         if verbose:
             print(msg)
         if progress_cb:
@@ -692,7 +694,7 @@ def build_all_stress_tests(root_dir, base_cfg, verbose=True, progress_cb=None):
     os.makedirs(root_dir, exist_ok=True)
     base_dir = os.path.join(root_dir, "baseline")
     if progress_cb:
-        progress_cb("=== Генерация baseline ===")
+        progress_cb("=== Generating baseline ===")
     generate_base_bundle(base_dir, base_cfg, verbose=verbose,
                          progress_cb=progress_cb)
 
@@ -711,7 +713,7 @@ def build_all_stress_tests(root_dir, base_cfg, verbose=True, progress_cb=None):
                     json.dump({"stress_kind": factor, "level": "none",
                                "note": "copied from baseline"}, f, indent=2)
                 if progress_cb:
-                    progress_cb(f"=== {factor}/none → копия baseline ===")
+                    progress_cb(f"=== {factor}/none → copy of baseline ===")
                 continue
 
             if progress_cb:
@@ -724,27 +726,32 @@ def build_all_stress_tests(root_dir, base_cfg, verbose=True, progress_cb=None):
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("out_dir")
-    p.add_argument("--build-stress-suite", action="store_true")
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--z-dim", type=int, default=20)
-    p.add_argument("--y-dim", type=int, default=2048)
-    p.add_argument("--x-dim", type=int, default=2048)
-    p.add_argument("--xy-um", type=float, default=0.144)
-    p.add_argument("--z-um", type=float, default=1.0)
-    p.add_argument("--n-images", type=int, default=5)
-    p.add_argument("--n-cells", type=int, default=20)
-    p.add_argument("--vol-min-um3", type=float, default=100.0)
-    p.add_argument("--vol-max-um3", type=float, default=1500.0)
+    p.add_argument("out_dir", help="Output directory")
+    p.add_argument("--build-stress-suite", action="store_true",
+                   help="Build the full stress-test suite")
+    p.add_argument("--seed", type=int, default=42, help="Random seed")
+    p.add_argument("--z-dim", type=int, default=20, help="Number of Z slices")
+    p.add_argument("--y-dim", type=int, default=2048, help="Y dimension (px)")
+    p.add_argument("--x-dim", type=int, default=2048, help="X dimension (px)")
+    p.add_argument("--xy-um", type=float, default=0.144, help="XY pixel size (µm/px)")
+    p.add_argument("--z-um", type=float, default=1.0, help="Z step (µm/slice)")
+    p.add_argument("--n-images", type=int, default=5, help="Number of images")
+    p.add_argument("--n-cells", type=int, default=20, help="Cells per image")
+    p.add_argument("--vol-min-um3", type=float, default=100.0,
+                   help="Min cell volume (µm³)")
+    p.add_argument("--vol-max-um3", type=float, default=1500.0,
+                   help="Max cell volume (µm³)")
     p.add_argument("--bg", type=float, default=0.0,
-                   help="Уровень фона (0..1)")
+                   help="Background level (0..1)")
     p.add_argument("--bg-xy", type=float, default=0.0,
-                   help="XY-градиент фона (0..1)")
+                   help="Background XY gradient (0..1)")
     p.add_argument("--bg-z", type=float, default=0.0,
-                   help="Z-градиент фона (0..1)")
+                   help="Background Z gradient (0..1)")
     p.add_argument("--kind", default="astrocyte",
-                   choices=["astrocyte", "microglia"])
-    p.add_argument("--normalize", action="store_true")
+                   choices=["astrocyte", "microglia"],
+                   help="Cell type")
+    p.add_argument("--normalize", action="store_true",
+                   help="Normalize TIFF output by maximum")
     return p.parse_args()
 
 
@@ -768,7 +775,7 @@ def cli_main():
         build_all_stress_tests(args.out_dir, cfg, verbose=True)
         return
     gt, n = generate_base_bundle(args.out_dir, cfg, verbose=True)
-    print(f"\nГотово. Строк: {n}")
+    print(f"\nDone. Rows: {n}")
     print(f"ground_truth: {gt}")
 
 
@@ -778,6 +785,7 @@ if _HAS_TK:
         BG = "#23252b"
         BG_SOFT = "#2b2e36"
         BG_CARD = "#33363f"
+        BG_LOG = "#1b1d22"
         FG = "#d4d4dc"
         FG_DIM = "#8e93a0"
         ACCENT = "#7aa2f7"
@@ -786,16 +794,17 @@ if _HAS_TK:
 
         def __init__(self):
             self.root = tk.Tk()
-            self.root.title("VoxelMaker v0.8 — фон + PSF-стресс")
+            self.root.title("RandomCellGenerator v1.0")
             self.root.configure(bg=self.BG)
-            self.root.geometry("840x800")
+            self.root.geometry("1180x820")
+            self.root.minsize(1000, 720)
             self._busy = False
             self._build_ui()
 
         def _row(self, parent, label, default, width=10):
             fr = tk.Frame(parent, bg=self.BG_CARD)
-            fr.pack(fill="x", pady=3)
-            tk.Label(fr, text=label, width=40, anchor="w",
+            fr.pack(fill="x", pady=2)
+            tk.Label(fr, text=label, width=34, anchor="w",
                      bg=self.BG_CARD, fg=self.FG,
                      font=("Segoe UI", 10)).pack(side="left")
             var = tk.StringVar(value=str(default))
@@ -810,27 +819,35 @@ if _HAS_TK:
             return var
 
         def _build_ui(self):
-            tk.Label(self.root, text="VoxelMaker v0.8",
+            header = tk.Frame(self.root, bg=self.BG)
+            header.pack(fill="x", padx=16, pady=(12, 6))
+            tk.Label(header, text="RandomCellGenerator v1.0",
                      bg=self.BG, fg=self.FG,
-                     font=("Segoe UI", 13, "bold")).pack(
-                anchor="w", padx=16, pady=(14, 4))
-            tk.Label(self.root,
-                     text="Фон + PSF-размытие + градиент + виньетка + даунсемплинг. "
-                          "Overlap/dropout удалены.",
+                     font=("Segoe UI", 13, "bold")).pack(anchor="w")
+            tk.Label(header,
+                     text="Background + PSF blur + gradient + vignette + downsampling. "
+                          "Overlap/dropout removed.",
                      bg=self.BG, fg=self.FG_DIM,
-                     font=("Segoe UI", 9), wraplength=800,
-                     justify="left").pack(anchor="w", padx=16, pady=(0, 10))
+                     font=("Segoe UI", 9), wraplength=1140,
+                     justify="left").pack(anchor="w")
 
-            card = tk.Frame(self.root, bg=self.BG_CARD, highlightthickness=1,
+            main = tk.Frame(self.root, bg=self.BG)
+            main.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+
+            left = tk.Frame(main, bg=self.BG, width=520)
+            left.pack(side="left", fill="y")
+            left.pack_propagate(False)
+
+            card = tk.Frame(left, bg=self.BG_CARD, highlightthickness=1,
                             highlightbackground=self.BORDER,
                             highlightcolor=self.BORDER)
-            card.pack(fill="both", expand=True, padx=16, pady=(0, 10))
+            card.pack(fill="both", expand=True)
             inner = tk.Frame(card, bg=self.BG_CARD)
             inner.pack(fill="both", expand=True, padx=14, pady=12)
 
             fr = tk.Frame(inner, bg=self.BG_CARD)
-            fr.pack(fill="x", pady=4)
-            tk.Label(fr, text="Папка выхода:", width=40, anchor="w",
+            fr.pack(fill="x", pady=3)
+            tk.Label(fr, text="Output folder:", width=34, anchor="w",
                      bg=self.BG_CARD, fg=self.FG,
                      font=("Segoe UI", 10)).pack(side="left")
             self.var_dir = tk.StringVar(
@@ -843,68 +860,80 @@ if _HAS_TK:
                      highlightcolor=self.ACCENT,
                      font=("Consolas", 10)).pack(side="left", fill="x",
                                                  expand=True)
-            tk.Button(fr, text="Обзор…", command=self._choose_dir,
+            tk.Button(fr, text="Browse…", command=self._choose_dir,
                       bg=self.BG_SOFT, fg=self.FG,
                       activebackground=self.BORDER, activeforeground=self.FG,
                       relief="flat", bd=0, padx=10, pady=3,
                       font=("Segoe UI", 9)).pack(side="left", padx=(6, 0))
 
-            self.var_z = self._row(inner, "Z (срезы):", 20)
+            self.var_z = self._row(inner, "Z (slices):", 20)
             self.var_y = self._row(inner, "Y (px):", 2048)
             self.var_x = self._row(inner, "X (px):", 2048)
             self.var_xy = self._row(inner, "XY (µm/px):", 0.144)
             self.var_zs = self._row(inner, "Z (µm/slice):", 1.0)
-            self.var_ni = self._row(inner, "Изображений:", 5)
-            self.var_nc = self._row(inner, "Клеток на изображение:", 20)
-            self.var_vmin = self._row(inner, "Мин. объём клетки (µm³):", 100.0)
-            self.var_vmax = self._row(inner, "Макс. объём клетки (µm³):", 1500.0)
-            self.var_bg = self._row(inner, "Фон (0..1):", 0.0)
-            self.var_bgxy = self._row(inner, "XY-градиент фона:", 0.0)
-            self.var_bgz = self._row(inner, "Z-градиент фона:", 0.0)
-            self.var_kind = self._row(inner, "Тип клеток:", "astrocyte")
+            self.var_ni = self._row(inner, "Images:", 5)
+            self.var_nc = self._row(inner, "Cells per image:", 20)
+            self.var_vmin = self._row(inner, "Min cell volume (µm³):", 100.0)
+            self.var_vmax = self._row(inner, "Max cell volume (µm³):", 1500.0)
+            self.var_bg = self._row(inner, "Background (0..1):", 0.0)
+            self.var_bgxy = self._row(inner, "Background XY gradient:", 0.0)
+            self.var_bgz = self._row(inner, "Background Z gradient:", 0.0)
+            self.var_kind = self._row(inner, "Cell type:", "astrocyte")
             self.var_seed = self._row(inner, "Random seed:", 42)
 
             self.var_norm = tk.BooleanVar(value=False)
             tk.Checkbutton(inner,
-                           text="Нормализовать TIFF по максимуму",
+                           text="Normalize TIFF by maximum",
                            variable=self.var_norm,
                            bg=self.BG_CARD, fg=self.FG,
                            selectcolor=self.BG_SOFT,
                            activebackground=self.BG_CARD,
                            font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
 
-            btns = tk.Frame(self.root, bg=self.BG)
-            btns.pack(fill="x", padx=16, pady=(0, 8))
-            self.btn_baseline = tk.Button(
-                btns, text="  Baseline  ", command=self._generate_baseline,
-                bg=self.BG_CARD, fg=self.FG,
-                activebackground=self.BORDER, activeforeground=self.FG,
-                relief="flat", bd=0, padx=14, pady=8,
-                font=("Segoe UI", 10))
-            self.btn_baseline.pack(side="left")
+            right = tk.Frame(main, bg=self.BG)
+            right.pack(side="left", fill="both", expand=True, padx=(10, 0))
 
-            self.btn_stress = tk.Button(
-                btns, text="  Все стресс-тесты  ",
-                command=self._generate_stress_suite,
-                bg=self.ACCENT, fg="#1a1c22",
-                activebackground=self.ACCENT_D, activeforeground="#1a1c22",
-                relief="flat", bd=0, padx=16, pady=8,
-                font=("Segoe UI", 10, "bold"))
-            self.btn_stress.pack(side="left", padx=(8, 0))
+            log_header = tk.Frame(right, bg=self.BG)
+            log_header.pack(fill="x")
+            tk.Label(log_header, text="Log",
+                     bg=self.BG, fg=self.FG,
+                     font=("Segoe UI", 10, "bold")).pack(side="left")
+            tk.Button(log_header, text="Clear", command=self._clear_log,
+                      bg=self.BG_SOFT, fg=self.FG,
+                      activebackground=self.BORDER, activeforeground=self.FG,
+                      relief="flat", bd=0, padx=10, pady=2,
+                      font=("Segoe UI", 9)).pack(side="right")
 
-            self.btn_exit = tk.Button(
-                btns, text="  Выход  ", command=self.root.quit,
-                bg=self.BG_CARD, fg=self.FG,
-                activebackground=self.BORDER, activeforeground=self.FG,
-                relief="flat", bd=0, padx=14, pady=8,
-                font=("Segoe UI", 10))
-            self.btn_exit.pack(side="right")
+            log_wrap = tk.Frame(right, bg=self.BG_CARD, highlightthickness=1,
+                                highlightbackground=self.BORDER,
+                                highlightcolor=self.BORDER)
+            log_wrap.pack(fill="both", expand=True, pady=(4, 0))
 
-            self.lbl_status = tk.Label(self.root, text="",
-                                       bg=self.BG, fg=self.FG_DIM,
-                                       font=("Consolas", 9), anchor="w",
-                                       justify="left", wraplength=800)
-            self.lbl_status.pack(fill="x", padx=16, pady=(0, 14))
+            self.txt_log = tk.Text(log_wrap, bg=self.BG_LOG, fg=self.FG,
+                                   insertbackground=self.ACCENT,
+                                   relief="flat", bd=0,
+                                   font=("Consolas", 9),
+                                   wrap="word", state="disabled",
+                                   padx=8, pady=6)
+            yscroll = ttk.Scrollbar(log_wrap, orient="vertical",
+                                    command=self.txt_log.yview)
+            self.txt_log.configure(yscrollcommand=yscroll.set)
+            yscroll.pack(side="right", fill="y")
+            self.txt_log.pack(side="left", fill="both", expand=True)
+
+        def _clear_log(self):
+            self.txt_log.configure(state="normal")
+            self.txt_log.delete("1.0", "end")
+            self.txt_log.configure(state="disabled")
+
+        def _log(self, msg: str):
+            """Append a line to the log widget (thread-safe via after())."""
+            def _do():
+                self.txt_log.configure(state="normal")
+                self.txt_log.insert("end", msg.rstrip("\n") + "\n")
+                self.txt_log.see("end")
+                self.txt_log.configure(state="disabled")
+            self.root.after(0, _do)
 
         def _choose_dir(self):
             d = filedialog.askdirectory(initialdir=self.var_dir.get() or ".")
@@ -935,36 +964,70 @@ if _HAS_TK:
             state = "disabled" if busy else "normal"
             for b in (self.btn_baseline, self.btn_stress, self.btn_exit):
                 b.configure(state=state)
-            self.lbl_status.config(text=text)
+            if text:
+                self._log(text)
             self.root.update_idletasks()
 
         def _progress(self, msg):
-            self.root.after(0, lambda: self.lbl_status.config(text=msg))
+            self._log(msg)
 
         def _on_done(self, text):
             self._set_busy(False, "")
-            messagebox.showinfo("Готово", text)
+            self._log("")
+            self._log(text)
+            messagebox.showinfo("Done", text)
 
         def _on_error(self, text):
             self._set_busy(False, "")
-            messagebox.showerror("Ошибка", text)
+            self._log(f"ERROR: {text}")
+            messagebox.showerror("Error", text)
+
+        def _ensure_buttons(self):
+            if hasattr(self, "_buttons_ready"):
+                return
+            btns = tk.Frame(self.root, bg=self.BG)
+            btns.pack(fill="x", padx=16, pady=(0, 10))
+            self.btn_baseline = tk.Button(
+                btns, text="  Baseline  ", command=self._generate_baseline,
+                bg=self.BG_CARD, fg=self.FG,
+                activebackground=self.BORDER, activeforeground=self.FG,
+                relief="flat", bd=0, padx=14, pady=8,
+                font=("Segoe UI", 10))
+            self.btn_baseline.pack(side="left")
+            self.btn_stress = tk.Button(
+                btns, text="  All stress tests  ",
+                command=self._generate_stress_suite,
+                bg=self.ACCENT, fg="#1a1c22",
+                activebackground=self.ACCENT_D, activeforeground="#1a1c22",
+                relief="flat", bd=0, padx=16, pady=8,
+                font=("Segoe UI", 10, "bold"))
+            self.btn_stress.pack(side="left", padx=(8, 0))
+            self.btn_exit = tk.Button(
+                btns, text="  Exit  ", command=self.root.quit,
+                bg=self.BG_CARD, fg=self.FG,
+                activebackground=self.BORDER, activeforeground=self.FG,
+                relief="flat", bd=0, padx=14, pady=8,
+                font=("Segoe UI", 10))
+            self.btn_exit.pack(side="right")
+            self._buttons_ready = True
 
         def _generate_baseline(self):
             if self._busy:
                 return
             out_dir = self.var_dir.get().strip()
             if not out_dir:
-                messagebox.showerror("Ошибка", "Укажите папку выхода")
+                messagebox.showerror("Error", "Please specify an output folder")
                 return
             cfg = self._collect_cfg()
-            self._set_busy(True, "Генерация baseline…")
+            self._clear_log()
+            self._set_busy(True, "Generating baseline…")
 
             def worker():
                 try:
                     gt, n = generate_base_bundle(out_dir, cfg, verbose=False,
                                                  progress_cb=self._progress)
                     self.root.after(0, lambda: self._on_done(
-                        f"Готово.\nКлеток: {n}\n{gt}"))
+                        f"Done.\nCells: {n}\n{gt}"))
                 except Exception as e:
                     err = str(e)
                     self.root.after(0, lambda: self._on_error(err))
@@ -976,17 +1039,18 @@ if _HAS_TK:
                 return
             out_dir = self.var_dir.get().strip()
             if not out_dir:
-                messagebox.showerror("Ошибка", "Укажите папку выхода")
+                messagebox.showerror("Error", "Please specify an output folder")
                 return
             cfg = self._collect_cfg()
-            self._set_busy(True, "Генерация набора стресс-тестов…")
+            self._clear_log()
+            self._set_busy(True, "Building stress-test suite…")
 
             def worker():
                 try:
                     build_all_stress_tests(out_dir, cfg, verbose=False,
                                            progress_cb=self._progress)
                     self.root.after(0, lambda: self._on_done(
-                        f"Набор стресс-тестов построен:\n{out_dir}"))
+                        f"Stress-test suite built:\n{out_dir}"))
                 except Exception as e:
                     err = str(e)
                     self.root.after(0, lambda: self._on_error(err))
@@ -994,6 +1058,7 @@ if _HAS_TK:
             threading.Thread(target=worker, daemon=True).start()
 
         def run(self):
+            self._ensure_buttons()
             self.root.mainloop()
 
 
