@@ -2117,25 +2117,27 @@ class Deconvolution:
     def __init__(self, ctx):
         self.ctx = ctx
 
-    def _deconvolve_3d_stack(self, image_stack, channel_label_key="channel.cells"):
+    def _deconvolve_3d_stack(self, image_stack, channel_label_key="channel.cells", params=None):
         self.ctx.log(self.ctx.t("log.deconv_start_channel", ch=self.ctx.t(channel_label_key)))
 
-        na = self.ctx._deconv_params.get('na', 0.95)
-        emission_um = self.ctx._deconv_params.get('emission_wavelength_um', 0.460)
+        if params is None:
+            params = self.ctx._deconv_params
+
+        na = params.get('na', 0.95)
+        emission_um = params.get('emission_wavelength_um', 0.460)
 
         sxy = getattr(self.ctx, 'xy_scale_um', 1.0) or 1.0
-        sz  = getattr(self.ctx, 'z_scale_um', 1.0) or 1.0
+        sz = getattr(self.ctx, 'z_scale_um', 1.0) or 1.0
 
         if na > 0 and emission_um > 0:
             sigma_xy_bg = 6.1 * emission_um / (na * sxy)
-            sigma_z_bg  = 36.6 * emission_um / (na * na * sz)
+            sigma_z_bg = 36.6 * emission_um / (na * na * sz)
         else:
             sigma_xy_bg = 2.0
-            sigma_z_bg  = 5.0
+            sigma_z_bg = 5.0
 
         sigma_xy_bg = max(0.3, min(sigma_xy_bg, 3.0))
-        sigma_z_bg  = max(0.5, min(sigma_z_bg, 5.0))
-
+        sigma_z_bg = max(0.5, min(sigma_z_bg, 5.0))
 
         radius_xy_bg = int(sigma_xy_bg * 3) + 1
         radius_z_bg = int(sigma_z_bg * 3) + 1
@@ -2171,7 +2173,6 @@ class Deconvolution:
             stack=img_deconv,
             title=self.ctx.t("dlg.slices.title_selector_channel", ch=self.ctx.t(channel_label_key)),
         )
-
         if to_delete and len(to_delete) > 0:
             self.ctx.log(self.ctx.t("log.deconv_slices_deleted_channel",
                                     ch=self.ctx.t(channel_label_key), n=len(to_delete), z=to_delete))
@@ -2182,59 +2183,13 @@ class Deconvolution:
         self.ctx.log(self.ctx.t("log.deconv_done_channel", ch=self.ctx.t(channel_label_key), shape=img_deconv.shape))
         return img_deconv.astype(np.float32)
 
-    def _deconvolve_3d_stack_dapi(self, image_stack, pixel_xy_um, pixel_z_um,
+    def _deconvolve_3d_stack_dapi(self, image_stack, pixel_xy_um=None, pixel_z_um=None,
                                   channel_label_key="channel.dapi"):
-        self.ctx.log(self.ctx.t("log.deconv_start_channel", ch=self.ctx.t(channel_label_key)))
-
-        z_dim, y_dim, x_dim = image_stack.shape
-
-        na = self.ctx._dapi_deconv_params.get('na', 0.95)
-        emission_um = self.ctx._dapi_deconv_params.get('emission_wavelength_um', 0.460)
-
-        if na > 0 and emission_um > 0:
-            airy_radius_um = 0.61 * emission_um / na
-            sigma_xy_um = airy_radius_um / 2.5
-            sigma_z_um = airy_radius_um / 1.5
-
-            sigma_xy = sigma_xy_um / pixel_xy_um if pixel_xy_um > 0 else 0.6
-            sigma_z = sigma_z_um / pixel_z_um if pixel_z_um > 0 else 1.5
-        else:
-            sigma_xy = 0.6
-            sigma_z = 1.5
-
-        sigma_xy = max(0.3, min(sigma_xy, 3.0))
-        sigma_z = max(0.5, min(sigma_z, 5.0))
-
-        img_blur = gaussian_filter(image_stack, sigma=(sigma_z, sigma_xy, sigma_xy), mode='reflect')
-
-        weight = 1.2
-        img_sharp = image_stack + weight * (image_stack - img_blur)
-        img_sharp = np.clip(img_sharp, 0, None)
-
-        original_sum = np.sum(image_stack)
-        if original_sum > 0:
-            scale_factor = original_sum / (np.sum(img_sharp) + 1e-6)
-            img_deconv = img_sharp * scale_factor
-        else:
-            img_deconv = img_sharp
-
-        img_deconv = median_filter(img_deconv, size=(3, 3, 3), mode='reflect')
-
-        to_delete = self.ctx.bridge._ask(
-            "slice_selector",
-            stack=img_deconv,
-            title=self.ctx.t("dlg.slices.title_selector_channel", ch=self.ctx.t(channel_label_key)),
+        return self._deconvolve_3d_stack(
+            image_stack,
+            channel_label_key=channel_label_key,
+            params=self.ctx._dapi_deconv_params,
         )
-
-        if to_delete and len(to_delete) > 0:
-            self.ctx.log(self.ctx.t("log.deconv_slices_deleted_channel",
-                                    ch=self.ctx.t(channel_label_key), n=len(to_delete), z=to_delete))
-            img_deconv[to_delete, :, :] = 0.0
-        else:
-            self.ctx.log(self.ctx.t("log.deconv_all_slices_kept_channel", ch=self.ctx.t(channel_label_key)))
-
-        self.ctx.log(self.ctx.t("log.deconv_done_channel", ch=self.ctx.t(channel_label_key), shape=img_deconv.shape))
-        return img_deconv.astype(np.float32)
 
 class Segmentation:
     def __init__(self, ctx):
@@ -2424,287 +2379,414 @@ class Segmentation:
         return astro_norm
 
     def segment_nuclei_local_from_soma(self, soma_mask, dapi_stack):
+        import numpy as np
+
+        from scipy.ndimage import (
+            gaussian_filter,
+            gaussian_gradient_magnitude,
+            distance_transform_edt,
+            binary_fill_holes,
+            binary_closing,
+            binary_opening,
+            binary_dilation,
+            label as ndi_label
+        )
+
+        from skimage.filters import threshold_otsu
+        from skimage.morphology import remove_small_objects
+        from skimage.segmentation import morphological_chan_vese
+
         self.ctx.log(self.ctx.t("log.nuclei_title"))
+
+        dapi = np.asarray(dapi_stack, dtype=np.float32)
+        soma = np.asarray(soma_mask)
 
         if not getattr(self.ctx, "has_dapi", True):
             self.ctx.log(self.ctx.t("log.nuclei_no_dapi"))
-            return np.zeros_like(dapi_stack, dtype=np.int32)
+            return np.zeros(dapi.shape, dtype=np.int32)
 
-        from scipy.ndimage import (gaussian_filter, binary_fill_holes,
-                                   label as nd_label, binary_dilation)
-        from skimage.morphology import remove_small_objects
-        from skimage.filters import threshold_triangle
-        from skimage.measure import find_contours
-
-        z_dim, y_dim, x_dim = dapi_stack.shape
-        clean_nuclei = np.zeros_like(dapi_stack, dtype=np.int32)
-        unique_ids = np.unique(soma_mask)[1:]
-        if len(unique_ids) == 0:
+        if dapi.ndim != 3 or soma.shape != dapi.shape:
             self.ctx.log(self.ctx.t("log.nuclei_no_soma"))
-            return clean_nuclei
+            return np.zeros(dapi.shape, dtype=np.int32)
 
-        xy_um = float(self.ctx.xy_scale_um or 1.0) * float(self.ctx.downsample)
-        z_um = float(self.ctx.z_scale_um or 1.0)
+        z_dim, y_dim, x_dim = dapi.shape
+        result = np.zeros(dapi.shape, dtype=np.int32)
 
-        dapi_smooth = gaussian_filter(
-            dapi_stack.astype(np.float32), sigma=(0.8, 1.0, 1.0)
+        soma_ids = np.unique(soma)
+        soma_ids = soma_ids[soma_ids > 0]
+
+        if soma_ids.size == 0:
+            self.ctx.log(self.ctx.t("log.nuclei_no_soma"))
+            return result
+
+        xy_um = float(getattr(self.ctx, "xy_scale_um", 1.0) or 1.0)
+        downsample = float(getattr(self.ctx, "downsample", 1.0) or 1.0)
+        z_um = float(getattr(self.ctx, "z_scale_um", 1.0) or 1.0)
+
+        xy_um = max(xy_um * downsample, 1e-6)
+        z_um = max(z_um, 1e-6)
+
+        is_2d = z_dim == 1
+
+        tile_radius = max(5, int(round(10.0 / xy_um)))
+        max_radius_xy = max(3, int(round(8.0 / xy_um)))
+        max_radius_z = max(1, int(round(6.0 / z_um)))
+
+        min_size = max(8, int(round(0.35 / (xy_um * xy_um))))
+        min_size = min(min_size, 100)
+
+        dapi = np.nan_to_num(
+            dapi,
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0
+        )
+        dapi = np.maximum(dapi, 0.0)
+
+        positive = dapi[dapi > 0]
+
+        if positive.size < 100:
+            self.ctx.log(self.ctx.t("log.nuclei_found", n=0))
+            return result
+
+        p_low, p_high = np.percentile(positive, [1, 99.5])
+
+        if p_high <= p_low:
+            self.ctx.log(self.ctx.t("log.nuclei_found", n=0))
+            return result
+
+        dapi = np.clip(
+            (dapi - p_low) / (p_high - p_low + 1e-6),
+            0.0,
+            1.0
         )
 
-        nz = dapi_smooth[dapi_smooth > 0]
-        if nz.size < 100:
-            return clean_nuclei
-
-        try:
-            signal_thr = float(threshold_triangle(nz))
-        except Exception:
-            signal_thr = float(np.percentile(nz, 35))
-        p20 = float(np.percentile(nz, 20))
-        p99 = float(np.percentile(nz, 99))
-        dyn_range = max(p99 - p20, 1e-6)
-        signal_thr = min(signal_thr, p20 + 0.6 * dyn_range)
-        signal_thr = max(signal_thr, p20 + 0.15 * dyn_range)
-
-        n_steps = 25
-        thresholds = np.linspace(p99, signal_thr, n_steps)
-        persistence_map = np.zeros_like(dapi_smooth, dtype=np.float32)
-
-        prev_labels = np.zeros_like(dapi_smooth, dtype=np.int32)
-        prev_n = 0
-        birth_thr = {}
-
-        for step, thr in enumerate(thresholds):
-            mask = dapi_smooth >= thr
-            mask = remove_small_objects(mask, min_size=10)
-            lbl, n = nd_label(mask, structure=np.ones((3, 3, 3)))
-
-            if n == 0:
-                prev_labels = np.zeros_like(dapi_smooth, dtype=np.int32)
-                prev_n = 0
-                continue
-
-            if prev_n == 0:
-                for k in range(1, n + 1):
-                    birth_thr[k] = thr
-                prev_labels = lbl
-                prev_n = n
-                continue
-
-            for k in range(1, n + 1):
-                comp_mask = (lbl == k)
-                overlap = prev_labels[comp_mask]
-                overlap = overlap[overlap > 0]
-                if len(overlap) == 0:
-                    birth_thr[k] = thr
-                    continue
-                vals, counts = np.unique(overlap, return_counts=True)
-                best_prev = int(vals[np.argmax(counts)])
-                birth_thr[k] = birth_thr.get(best_prev, thr)
-
-            prev_labels = lbl
-            prev_n = n
-
-        for step, thr in enumerate(thresholds):
-            mask = dapi_smooth >= thr
-            mask = remove_small_objects(mask, min_size=10)
-            lbl, n = nd_label(mask, structure=np.ones((3, 3, 3)))
-            if n == 0:
-                continue
-            for k in range(1, n + 1):
-                if k not in birth_thr:
-                    continue
-                lifespan = birth_thr[k] - thr
-                if lifespan > 0:
-                    comp_vals = lbl == k
-                    current_max = persistence_map[comp_vals].max()
-                    if lifespan > current_max:
-                        persistence_map[comp_vals] = lifespan
-
-        persistence_thr = 0.15 * dyn_range
-        persistent_mask = persistence_map >= persistence_thr
-        persistent_mask = remove_small_objects(persistent_mask, min_size=10)
-        persistent_mask = binary_fill_holes(persistent_mask)
-
-        lbl_p, n_p = nd_label(persistent_mask, structure=np.ones((3, 3, 3)))
+        smooth = gaussian_filter(
+            dapi,
+            sigma=(0.6, 0.8, 0.8),
+            mode="reflect"
+        )
 
         seed_info = []
-        for cid in unique_ids:
-            soma_cid = (soma_mask == cid)
-            if not np.any(soma_cid):
+
+        for cid in soma_ids:
+            soma_coords = np.argwhere(soma == cid)
+
+            if soma_coords.size == 0:
                 continue
-            coords = np.argwhere(soma_cid)
-            center = coords.mean(axis=0)
-            cz = int(round(center[0]))
-            cy = int(round(center[1]))
-            cx = int(round(center[2]))
-            cz = max(0, min(z_dim - 1, cz))
-            cy = max(0, min(y_dim - 1, cy))
-            cx = max(0, min(x_dim - 1, cx))
 
-            if not persistent_mask[cz, cy, cx]:
-                search_r = 4
-                z_lo, z_hi = max(0, cz - search_r), min(z_dim, cz + search_r + 1)
-                y_lo, y_hi = max(0, cy - search_r), min(y_dim, cy + search_r + 1)
-                x_lo, x_hi = max(0, cx - search_r), min(x_dim, cx + search_r + 1)
-                sub = dapi_smooth[z_lo:z_hi, y_lo:y_hi, x_lo:x_hi]
-                sub_p = persistent_mask[z_lo:z_hi, y_lo:y_hi, x_lo:x_hi]
-                if np.any(sub_p):
-                    masked = np.where(sub_p, sub, -np.inf)
-                    idx = np.unravel_index(np.argmax(masked), masked.shape)
-                    cz = int(idx[0] + z_lo)
-                    cy = int(idx[1] + y_lo)
-                    cx = int(idx[2] + x_lo)
-                else:
-                    continue
+            soma_center = np.mean(soma_coords, axis=0)
 
-            comp_id = int(lbl_p[cz, cy, cx])
-            if comp_id == 0:
+            cz, cy, cx = np.round(soma_center).astype(int)
+
+            z_search = 0 if is_2d else max(
+                1,
+                int(round(3.0 / z_um))
+            )
+
+            z0 = max(0, cz - z_search)
+            z1 = min(z_dim, cz + z_search + 1)
+
+            y0 = max(0, cy - tile_radius)
+            y1 = min(y_dim, cy + tile_radius + 1)
+
+            x0 = max(0, cx - tile_radius)
+            x1 = min(x_dim, cx + tile_radius + 1)
+
+            local = smooth[z0:z1, y0:y1, x0:x1]
+
+            if local.size == 0:
+                continue
+
+            idx = np.unravel_index(np.argmax(local), local.shape)
+
+            seed = (
+                int(idx[0] + z0),
+                int(idx[1] + y0),
+                int(idx[2] + x0)
+            )
+
+            if smooth[seed] <= 0:
                 continue
 
             seed_info.append({
-                'cid': int(cid),
-                'seed': (cz, cy, cx),
-                'comp_id': comp_id
+                "id": int(cid),
+                "seed": seed
             })
 
         if not seed_info:
-            self.ctx.log(self.ctx.t("log.nuclei_no_soma"))
-            return clean_nuclei
+            self.ctx.log(self.ctx.t("log.nuclei_found", n=0))
+            return result
 
-        comp_to_seeds = {}
         for info in seed_info:
-            comp_to_seeds.setdefault(info['comp_id'], []).append(info)
+            cid = info["id"]
+            sz, sy, sx = info["seed"]
 
-        for comp_id, infos in comp_to_seeds.items():
-            comp_mask = (lbl_p == comp_id)
+            z0 = max(0, sz - max_radius_z)
+            z1 = min(z_dim, sz + max_radius_z + 1)
 
-            cid = infos[0]['cid']
-            soma_here = (soma_mask == cid)
-            soma_dilated = binary_dilation(soma_here, structure=np.ones((3, 3, 3)), iterations=1)
+            y0 = max(0, sy - tile_radius)
+            y1 = min(y_dim, sy + tile_radius + 1)
 
-            if len(infos) == 1:
-                nuc_mask = comp_mask & soma_dilated
-                nuc_mask = binary_fill_holes(nuc_mask)
-                nuc_mask = remove_small_objects(nuc_mask, min_size=10)
-                if np.sum(nuc_mask) >= 10:
-                    clean_nuclei[nuc_mask] = cid
+            x0 = max(0, sx - tile_radius)
+            x1 = min(x_dim, sx + tile_radius + 1)
+
+            volume = smooth[z0:z1, y0:y1, x0:x1].copy()
+
+            if volume.size == 0:
                 continue
 
-            cz, cy, cx = infos[0]['seed']
-            slice_mask = (comp_mask & soma_dilated)[cz]
-            if not np.any(slice_mask):
-                for info in infos:
-                    c_info = info['cid']
-                    c_soma = binary_dilation(soma_mask == c_info, structure=np.ones((3, 3, 3)), iterations=1)
-                    c_mask = comp_mask & c_soma
-                    if np.sum(c_mask) >= 10:
-                        clean_nuclei[c_mask] = c_info
+            lz, ly, lx = volume.shape
+
+            local_seed = (
+                sz - z0,
+                sy - y0,
+                sx - x0
+            )
+
+            occupied = result[z0:z1, y0:y1, x0:x1] > 0
+
+            zz, yy, xx = np.ogrid[:lz, :ly, :lx]
+
+            dz = (zz - local_seed[0]) * z_um
+            dy = (yy - local_seed[1]) * xy_um
+            dx = (xx - local_seed[2]) * xy_um
+
+            spatial_limit = (
+                                    (dz / max(6.0, z_um)) ** 2
+                                    + (dy / 8.0) ** 2
+                                    + (dx / 8.0) ** 2
+                            ) <= 1.0
+
+            spatial_limit &= ~occupied
+
+            if not np.any(spatial_limit):
                 continue
 
-            contours = find_contours(slice_mask.astype(float), 0.5)
-            if not contours:
-                for info in infos:
-                    c_info = info['cid']
-                    c_soma = binary_dilation(soma_mask == c_info, structure=np.ones((3, 3, 3)), iterations=1)
-                    c_mask = comp_mask & c_soma
-                    if np.sum(c_mask) >= 10:
-                        clean_nuclei[c_mask] = c_info
+            local_values = volume[spatial_limit]
+
+            if local_values.size < 30:
                 continue
 
-            contour = max(contours, key=len)
-            n_pts = len(contour)
-            if n_pts < 20:
-                for info in infos:
-                    c_info = info['cid']
-                    c_soma = binary_dilation(soma_mask == c_info, structure=np.ones((3, 3, 3)), iterations=1)
-                    c_mask = comp_mask & c_soma
-                    if np.sum(c_mask) >= 10:
-                        clean_nuclei[c_mask] = c_info
-                continue
+            try:
+                otsu = float(threshold_otsu(local_values))
+            except Exception:
+                otsu = float(np.percentile(local_values, 60))
 
-            concavity_scores = np.zeros(n_pts, dtype=np.float32)
-            window = max(3, n_pts // 20)
-            for i in range(n_pts):
-                p_prev = contour[(i - window) % n_pts]
-                p_curr = contour[i]
-                p_next = contour[(i + window) % n_pts]
-                v1 = p_curr - p_prev
-                v2 = p_next - p_curr
-                cross = v1[0] * v2[1] - v1[1] * v2[0]
-                concavity_scores[i] = cross
+            p20, p50, p85, p98 = np.percentile(
+                local_values,
+                [20, 50, 85, 98]
+            )
 
-            candidate_idx = []
-            for i in range(n_pts):
-                if concavity_scores[i] < np.percentile(concavity_scores, 15):
-                    candidate_idx.append(i)
+            dynamic = max(float(p98 - p20), 1e-6)
 
-            split_points = []
-            min_dist = max(3, n_pts // 10)
-            for idx in candidate_idx:
-                if not split_points:
-                    split_points.append(idx)
-                else:
-                    if idx - split_points[-1] > min_dist and (n_pts - idx + split_points[0]) > min_dist:
-                        split_points.append(idx)
+            low_threshold = max(
+                float(p20),
+                otsu - 0.35 * dynamic
+            )
 
-            if len(split_points) < 2:
-                for info in infos:
-                    c_info = info['cid']
-                    c_soma = binary_dilation(soma_mask == c_info, structure=np.ones((3, 3, 3)), iterations=1)
-                    c_mask = comp_mask & c_soma
-                    if np.sum(c_mask) >= 10:
-                        clean_nuclei[c_mask] = c_info
-                continue
+            high_threshold = max(
+                float(p50),
+                otsu
+            )
 
-            seed_slice_coords = []
-            for info in infos:
-                sz, sy, sx = info['seed']
-                seed_slice_coords.append((info['cid'], sy, sx))
+            bright = (
+                    (volume >= high_threshold)
+                    & spatial_limit
+            )
 
-            assigned = np.zeros_like(slice_mask, dtype=np.int32)
-            for c_info, sy, sx in seed_slice_coords:
-                if 0 <= sy < slice_mask.shape[0] and 0 <= sx < slice_mask.shape[1]:
-                    seed_pt = np.zeros_like(slice_mask, dtype=bool)
-                    seed_pt[sy, sx] = True
-                    seed_pt = binary_dilation(seed_pt, structure=np.ones((3, 3)), iterations=2)
-                    seed_pt = seed_pt & slice_mask
-                    assigned[seed_pt] = c_info
+            seed_mask = np.zeros(volume.shape, dtype=bool)
 
-            queue = deque()
-            for c_info, sy, sx in seed_slice_coords:
-                if assigned[sy, sx] == c_info:
-                    queue.append((sy, sx))
+            seed_mask[local_seed] = True
 
-            while queue:
-                y, x = queue.popleft()
-                c_info = assigned[y, x]
-                for dy, dx in [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)]:
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < slice_mask.shape[0] and 0 <= nx < slice_mask.shape[1]:
-                        if slice_mask[ny, nx] and assigned[ny, nx] == 0:
-                            assigned[ny, nx] = c_info
-                            queue.append((ny, nx))
+            if not bright[local_seed]:
+                search_radius = max(2, int(round(2.0 / xy_um)))
 
-            for info in infos:
-                c_info = info['cid']
-                z_slice = info['seed'][0]
-                slice_assigned = assigned == c_info
-                if not np.any(slice_assigned):
+                sy0 = max(0, local_seed[1] - search_radius)
+                sy1 = min(ly, local_seed[1] + search_radius + 1)
+
+                sx0 = max(0, local_seed[2] - search_radius)
+                sx1 = min(lx, local_seed[2] + search_radius + 1)
+
+                search = bright[
+                    local_seed[0],
+                    sy0:sy1,
+                    sx0:sx1
+                ]
+
+                if not np.any(search):
                     continue
 
-                c_soma = binary_dilation(soma_mask == c_info, structure=np.ones((3, 3, 3)), iterations=1)
-                c_mask = comp_mask & c_soma
+                sub = volume[
+                    local_seed[0],
+                    sy0:sy1,
+                    sx0:sx1
+                ]
 
-                current_nuc = c_mask.copy()
-                current_nuc[z_slice] = slice_assigned & slice_mask
-                current_nuc = binary_fill_holes(current_nuc)
-                current_nuc = remove_small_objects(current_nuc, min_size=10)
+                iy, ix = np.unravel_index(
+                    np.argmax(np.where(search, sub, -np.inf)),
+                    search.shape
+                )
 
-                if np.sum(current_nuc) >= 10:
-                    clean_nuclei[current_nuc] = c_info
+                local_seed = (
+                    local_seed[0],
+                    sy0 + int(iy),
+                    sx0 + int(ix)
+                )
 
-        self.ctx.log(self.ctx.t("log.nuclei_found",
-                                n=len(np.unique(clean_nuclei)) - 1))
-        return clean_nuclei
+            seed_mask[:] = False
+            seed_mask[local_seed] = True
+
+            bright_labels, bright_count = ndi_label(
+                bright,
+                structure=np.ones((3, 3, 3), dtype=bool)
+            )
+
+            seed_label = int(bright_labels[local_seed])
+
+            if seed_label > 0:
+                initial = bright_labels == seed_label
+            else:
+                marker_radius = max(1, int(round(1.0 / xy_um)))
+
+                marker = (
+                        (dy ** 2 + dx ** 2) <= (marker_radius * xy_um) ** 2
+                )
+
+                marker &= spatial_limit
+                initial = marker
+
+            if np.count_nonzero(initial) < 3:
+                continue
+
+            initial &= spatial_limit
+
+            initial = binary_closing(
+                initial,
+                structure=np.ones((3, 3, 3), dtype=bool),
+                iterations=1
+            )
+
+            initial = binary_fill_holes(initial)
+
+            def smooth_surface(mask, sigma):
+                inside = distance_transform_edt(mask)
+                outside = distance_transform_edt(~mask)
+
+                signed = inside - outside
+
+                signed = gaussian_filter(
+                    signed.astype(np.float32),
+                    sigma=sigma,
+                    mode="nearest"
+                )
+
+                return signed >= 0
+
+            initial = smooth_surface(
+                initial,
+                sigma=(0.5, 1.0, 1.0)
+            )
+
+            try:
+                cv_mask = morphological_chan_vese(
+                    volume,
+                    num_iter=35,
+                    init_level_set=initial,
+                    smoothing=2,
+                    lambda1=1.0,
+                    lambda2=1.2
+                )
+
+                cv_mask = np.asarray(cv_mask, dtype=bool)
+
+            except Exception:
+                cv_mask = initial.copy()
+
+            cv_mask &= spatial_limit
+
+            cv_labels, cv_count = ndi_label(
+                cv_mask,
+                structure=np.ones((3, 3, 3), dtype=bool)
+            )
+
+            seed_component = int(cv_labels[local_seed])
+
+            if seed_component > 0:
+                candidate = cv_labels == seed_component
+            else:
+                candidate = initial.copy()
+
+            if np.count_nonzero(candidate) < min_size:
+                candidate = initial.copy()
+
+            candidate = binary_fill_holes(candidate)
+
+            candidate = binary_closing(
+                candidate,
+                structure=np.ones((3, 3, 3), dtype=bool),
+                iterations=1
+            )
+
+            candidate = smooth_surface(
+                candidate,
+                sigma=(0.6, 1.2, 1.2)
+            )
+
+            candidate = remove_small_objects(
+                candidate,
+                min_size=min_size
+            )
+
+            final_labels, final_count = ndi_label(
+                candidate,
+                structure=np.ones((3, 3, 3), dtype=bool)
+            )
+
+            final_seed_label = int(final_labels[local_seed])
+
+            if final_seed_label > 0:
+                candidate = final_labels == final_seed_label
+
+            if np.count_nonzero(candidate) < min_size:
+                continue
+
+            candidate = smooth_surface(
+                candidate,
+                sigma=(0.5, 0.9, 0.9)
+            )
+
+            candidate = binary_fill_holes(candidate)
+
+            candidate &= ~occupied
+
+            if np.count_nonzero(candidate) < min_size:
+                continue
+
+            final_labels, _ = ndi_label(
+                candidate,
+                structure=np.ones((3, 3, 3), dtype=bool)
+            )
+
+            seed_label = int(final_labels[local_seed])
+
+            if seed_label > 0:
+                candidate = final_labels == seed_label
+
+            if np.count_nonzero(candidate) < min_size:
+                continue
+
+            target = result[z0:z1, y0:y1, x0:x1]
+            target[candidate & (target == 0)] = cid
+
+        found = np.unique(result)
+        found = found[found > 0]
+
+        self.ctx.log(
+            self.ctx.t("log.nuclei_found", n=len(found))
+        )
+
+        return result.astype(np.int32)
 
     def _grow_cells_from_soma(self, astro_norm, soma_mask):
         self.ctx.log(self.ctx.t("log.cells_title"))
@@ -7757,7 +7839,9 @@ class GuiBridge:
         def _set_all(val):
             for v in vars_map.values():
                 v.set(bool(val))
-            self.app._pending_metrics_config = {k: bool(v.get()) for k, v in vars_map.items()}
+            self.app._pending_metrics_config = {
+                k: bool(v.get()) for k, v in vars_map.items()
+            }
 
         RoundedButton(top_bar, self.app._t("dlg.metrics.select_all"),
                       command=lambda: _set_all(True),
@@ -7766,6 +7850,7 @@ class GuiBridge:
                       hover_bg=self.app.ACCENT, hover_fg="#1a1c22",
                       active_bg=self.app.ACCENT_D,
                       font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+
         RoundedButton(top_bar, self.app._t("dlg.metrics.select_none"),
                       command=lambda: _set_all(False),
                       width=130, height=28, radius=14,
@@ -7797,10 +7882,13 @@ class GuiBridge:
 
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
         canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         def _on_var_change(*_):
-            self.app._pending_metrics_config = {k: bool(v.get()) for k, v in vars_map.items()}
+            self.app._pending_metrics_config = {
+                k: bool(v.get()) for k, v in vars_map.items()
+            }
 
         is_2d = bool(getattr(self.app, "_probe_is_2d", False))
 
@@ -7848,20 +7936,28 @@ class GuiBridge:
 
         def finish():
             canvas.unbind_all("<MouseWheel>")
+
             for k, v in vars_map.items():
                 cfg_ref[k] = bool(v.get())
+
             self.app._pending_metrics_config = dict(cfg_ref)
 
             ch_cfg = getattr(self.app, "_pending_channels_config", None)
             if ch_cfg:
                 ch_cfg["metrics_config"] = dict(cfg_ref)
 
-            self.app.stop_work_panel()
+            channel_kw = getattr(self.app, "_active_channel_dialog_kw", None)
 
-            if getattr(self.app, "_active_channel_finish", None) is not None:
-                self.app._active_channel_finish()
-                self.app._active_channel_finish = None
+            if channel_kw is not None:
+                if ch_cfg:
+                    channel_kw["cell_idx_default"] = ch_cfg.get("cell_idx", 0)
+                    channel_kw["dapi_idx_default"] = ch_cfg.get("dapi_idx")
+                    channel_kw["has_dapi_default"] = ch_cfg.get("has_dapi", False)
+
+                self.app.stop_work_panel()
+                self._dialog_channel_selector(channel_kw)
             else:
+                self.app.stop_work_panel()
                 self._ok(None)
 
         def cancel():
@@ -7879,6 +7975,7 @@ class GuiBridge:
         )
 
     def _dialog_channel_selector(self, kw):
+        self.app._active_channel_dialog_kw = kw
         mips = kw.get("mips", [])
         n = len(mips)
         if n < 1:
@@ -7909,11 +8006,31 @@ class GuiBridge:
 
         panel = self.app.start_work_panel(self.app._t("dlg.channels.title"))
 
-        tk.Label(panel,
-                 text=self.app._t("dlg.channels.instructions"),
-                 justify="left", anchor="w",
-                 bg=self.app.BG_CARD, fg=self.app.FG,
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
+        header = tk.Frame(panel, bg=self.app.BG_CARD)
+        header.pack(fill="x", pady=(0, 8))
+
+        tk.Label(
+            header,
+            text=self.app._t("dlg.channels.instructions"),
+            justify="left", anchor="w",
+            bg=self.app.BG_CARD, fg=self.app.FG,
+            font=("Segoe UI", 10, "bold"),
+        ).pack(side="left", fill="x", expand=True)
+
+        def _open_metrics_dialog():
+            self.app._probe_is_2d = bool(getattr(self.app, "_probe_is_2d", False))
+            self._dialog_metrics_selector(self.app._pending_metrics_config)
+
+        RoundedButton(
+            header,
+            self.app._t("dlg.metrics.btn"),
+            command=_open_metrics_dialog,
+            width=120, height=30, radius=15,
+            bg=self.app.BG_HOVER, fg=self.app.FG,
+            hover_bg=self.app.ACCENT, hover_fg="#1a1c22",
+            active_bg=self.app.ACCENT_D,
+            font=("Segoe UI", 9),
+        ).pack(side="right", padx=(12, 0))
 
         scroll_frame = tk.Frame(panel, bg=self.app.BG_CARD)
         scroll_frame.pack(fill="both", expand=True)
@@ -8213,7 +8330,8 @@ class GuiBridge:
             text=self.app._t("dlg.channels.seg_mode_strict"),
             variable=self._var_seg_strict,
             command=lambda: _on_seg_mode_toggle("strict"),
-            bg=self.app.BG_CARD, fg=self.app.FG,
+            bg=self.app.BG_CARD,
+            fg=self.app.FG,
             activebackground=self.app.BG_CARD,
             activeforeground=self.app.ACCENT,
             selectcolor=self.app.BG_SOFT,
@@ -8237,7 +8355,8 @@ class GuiBridge:
             text=self.app._t("dlg.channels.seg_mode_soft"),
             variable=self._var_seg_soft,
             command=lambda: _on_seg_mode_toggle("soft"),
-            bg=self.app.BG_CARD, fg=self.app.FG,
+            bg=self.app.BG_CARD,
+            fg=self.app.FG,
             activebackground=self.app.BG_CARD,
             activeforeground=self.app.ACCENT,
             selectcolor=self.app.BG_SOFT,
@@ -8262,24 +8381,6 @@ class GuiBridge:
         used = _roles_in_use()
         if filepath:
             self.app._update_optics_for_channels(filepath, used.get("cells"), used.get("dapi"), used.get("granules"))
-
-        metrics_bar = tk.Frame(panel, bg=self.app.BG_CARD)
-        metrics_bar.pack(anchor="w", pady=(8, 0))
-
-        def _open_metrics_dialog():
-            self.app._probe_is_2d = bool(getattr(self.app, "_probe_is_2d", False))
-            self._dialog_metrics_selector(self.app._pending_metrics_config)
-
-        RoundedButton(
-            metrics_bar,
-            self.app._t("dlg.metrics.btn"),
-            command=_open_metrics_dialog,
-            width=160, height=30, radius=15,
-            bg=self.app.BG_HOVER, fg=self.app.FG,
-            hover_bg=self.app.ACCENT, hover_fg="#1a1c22",
-            active_bg=self.app.ACCENT_D,
-            font=("Segoe UI", 9),
-        ).pack(side="left")
 
         def finish():
             canvas.unbind_all("<MouseWheel>")
