@@ -971,7 +971,7 @@ def default_metrics_config(is_2d=None):
         "soma_eccentricity",
         "nucleus_area", "nucleus_perimeter", "nucleus_solidity",
         "nucleus_elongation", "nucleus_form_factor", "nucleus_roundness",
-        "nucleus_eccentricity", "cell_process", "granule_size_count",
+        "nucleus_eccentricity", "cell_process", "cell_skeleton", "granule_size_count",
     ]
     basic_3d = [
         "cell_volume", "cell_surface", "cell_sphericity",
@@ -2383,12 +2383,9 @@ class Segmentation:
 
         from scipy.ndimage import (
             gaussian_filter,
-            gaussian_gradient_magnitude,
             distance_transform_edt,
             binary_fill_holes,
             binary_closing,
-            binary_opening,
-            binary_dilation,
             label as ndi_label
         )
 
@@ -5054,6 +5051,201 @@ class Measurements:
         verbose_each = (total <= 20)
         return ProgressLogger(total, prefix, verbose_each)
 
+    def _skeleton_morphometry(self, cell_mask, soma_mask=None, spacing=None):
+        from collections import deque
+        from scipy import ndimage as ndi
+        from skimage.morphology import skeletonize
+
+        mask = np.asarray(cell_mask, dtype=bool)
+        ndim = mask.ndim
+
+        empty = {
+            "cell_skeleton_length_um": 0.0,
+            "cell_skeleton_branch_points": 0,
+            "cell_skeleton_endpoints": 0,
+            "cell_skeleton_branch_count": 0,
+            "cell_skeleton_mean_branch_length_um": 0.0,
+            "cell_skeleton_max_branch_length_um": 0.0,
+            "cell_skeleton_tortuosity": 0.0,
+        }
+
+        if ndim not in (2, 3) or not np.any(mask):
+            return empty
+
+        if spacing is None:
+            spacing = (1.0,) * ndim
+        spacing = tuple(float(v) for v in spacing)
+
+        if len(spacing) != ndim or any(v <= 0 for v in spacing):
+            spacing = (1.0,) * ndim
+
+        if ndim == 2:
+            skel = skeletonize(mask)
+        else:
+            try:
+                skel = skeletonize(mask, method="lee")
+            except TypeError:
+                from skimage.morphology import skeletonize_3d
+                skel = skeletonize_3d(mask) > 0
+
+        coords = np.argwhere(skel)
+        if len(coords) < 2:
+            return empty
+
+        offsets = [
+            np.asarray(o, dtype=np.int32)
+            for o in np.ndindex(*(3,) * ndim)
+        ]
+        offsets = [
+            o - 1 for o in offsets
+            if np.any(o != 1)
+        ]
+
+        coord_to_index = {tuple(c): i for i, c in enumerate(coords)}
+        adjacency = [[] for _ in range(len(coords))]
+
+        for i, coord in enumerate(coords):
+            for offset in offsets:
+                neighbor = tuple(coord + offset)
+                j = coord_to_index.get(neighbor)
+                if j is None or j <= i:
+                    continue
+                distance = float(np.sqrt(np.sum((offset * spacing) ** 2)))
+                adjacency[i].append((j, distance))
+                adjacency[j].append((i, distance))
+
+        degree = np.asarray([len(v) for v in adjacency], dtype=np.int32)
+        endpoints = np.flatnonzero(degree == 1)
+        junction_voxels = np.flatnonzero(degree >= 3)
+
+        if soma_mask is not None:
+            soma = np.asarray(soma_mask, dtype=bool)
+            if soma.shape == mask.shape and np.any(soma):
+                soma_indices = np.flatnonzero(
+                    np.asarray([soma[tuple(c)] for c in coords], dtype=bool)
+                )
+            else:
+                soma_indices = np.asarray([], dtype=np.int64)
+        else:
+            soma_indices = np.asarray([], dtype=np.int64)
+
+        junction_set = set(int(v) for v in junction_voxels)
+        visited_junctions = set()
+        junction_clusters = []
+
+        for start in junction_voxels:
+            start = int(start)
+            if start in visited_junctions:
+                continue
+            stack = [start]
+            visited_junctions.add(start)
+            cluster = []
+
+            while stack:
+                current = stack.pop()
+                cluster.append(current)
+                for neighbor, _ in adjacency[current]:
+                    if neighbor in junction_set and neighbor not in visited_junctions:
+                        visited_junctions.add(neighbor)
+                        stack.append(neighbor)
+
+            junction_clusters.append(cluster)
+
+        junction_representatives = []
+        for cluster in junction_clusters:
+            if soma_indices.size:
+                soma_set = set(int(v) for v in soma_indices)
+                non_soma = [v for v in cluster if v not in soma_set]
+                if not non_soma:
+                    continue
+                cluster = non_soma
+            junction_representatives.append(cluster)
+
+        branch_nodes = set()
+        for cluster in junction_representatives:
+            branch_nodes.update(cluster)
+
+        endpoint_nodes = set(int(v) for v in endpoints)
+        terminal_nodes = endpoint_nodes | branch_nodes
+
+        total_length = 0.0
+        for i, neighbors in enumerate(adjacency):
+            for j, distance in neighbors:
+                if j > i:
+                    total_length += distance
+
+        if not terminal_nodes:
+            result = dict(empty)
+            result["cell_skeleton_length_um"] = float(total_length)
+            return result
+
+        visited_edges = set()
+        branch_lengths = []
+        tortuosities = []
+
+        def edge_key(a, b):
+            return (a, b) if a < b else (b, a)
+
+        for start in terminal_nodes:
+            for neighbor, first_distance in adjacency[start]:
+                key = edge_key(start, neighbor)
+                if key in visited_edges:
+                    continue
+
+                visited_edges.add(key)
+                previous = start
+                current = neighbor
+                path_length = first_distance
+                path_start = start
+                path_end = current
+                guard = 0
+
+                while current not in terminal_nodes:
+                    candidates = [
+                        (n, d) for n, d in adjacency[current]
+                        if n != previous
+                    ]
+                    if not candidates:
+                        break
+
+                    next_node, distance = candidates[0]
+                    next_key = edge_key(current, next_node)
+                    if next_key in visited_edges:
+                        break
+
+                    visited_edges.add(next_key)
+                    path_length += distance
+                    previous, current = current, next_node
+                    path_end = current
+                    guard += 1
+                    if guard > len(coords):
+                        break
+
+                if path_length > 0:
+                    branch_lengths.append(float(path_length))
+                    a = coords[path_start] * np.asarray(spacing)
+                    b = coords[path_end] * np.asarray(spacing)
+                    euclidean = float(np.linalg.norm(b - a))
+                    if euclidean > 0:
+                        tortuosities.append(float(path_length / euclidean))
+
+        result = {
+            "cell_skeleton_length_um": float(total_length),
+            "cell_skeleton_branch_points": int(len(junction_representatives)),
+            "cell_skeleton_endpoints": int(len(endpoints)),
+            "cell_skeleton_branch_count": int(len(branch_lengths)),
+            "cell_skeleton_mean_branch_length_um": (
+                float(np.mean(branch_lengths)) if branch_lengths else 0.0
+            ),
+            "cell_skeleton_max_branch_length_um": (
+                float(np.max(branch_lengths)) if branch_lengths else 0.0
+            ),
+            "cell_skeleton_tortuosity": (
+                float(np.mean(tortuosities)) if tortuosities else 0.0
+            ),
+        }
+        return result
+
     def measure_cells_2d(self, labels, intensity, nuclei, filename,
                          granules=None, cell_channel=None):
         if labels.shape != intensity.shape:
@@ -5092,6 +5284,7 @@ class Measurements:
                                _want("cell_intensity_entropy_gini") or _want("cell_intensity_highlow")
         need_cell_glcm = _want("cell_glcm")
         need_process = _want("cell_process")
+        need_skeleton = _want("cell_skeleton")
         need_snr_cnr_sbr = _want("cell_snr_cnr_sbr")
 
         need_soma_stats = _want("soma_intensity_stats")
@@ -5190,6 +5383,14 @@ class Measurements:
                     soma_mask_2d = (self.ctx._soma_labels[0] == cid)
                 else:
                     soma_mask_2d = (self.ctx._soma_labels == cid)
+
+            skeleton_fields = {}
+            if need_skeleton:
+                skeleton_fields = self._skeleton_morphometry(
+                    cell_mask_2d,
+                    soma_mask_2d,
+                    spacing=(xy_um, xy_um),
+                )
 
             soma_area_px = float(np.sum(soma_mask_2d))
             soma_props = measure.regionprops(soma_mask_2d.astype(np.uint8), intensity_image=intensity_2d) if soma_area_px > 0 else []
@@ -5353,12 +5554,6 @@ class Measurements:
                             granule_fields['granule_max_intensity'] = float(np.max(gvals))
                             granule_fields['granule_p95_intensity'] = float(np.percentile(gvals, 95))
                             granule_fields['granule_integrated_intensity'] = float(np.sum(gvals))
-                            bg_mask = cell_mask_2d & (~(granule_2d > 0))
-                            bg_vals = cell_channel[0][bg_mask] if cell_channel.ndim == 3 else cell_channel[bg_mask]
-                            bg_vals = bg_vals[np.isfinite(bg_vals)]
-                            signal_mean = float(np.mean(gvals))
-                            background_mean = float(np.mean(bg_vals)) if bg_vals.size > 0 else 0.0
-                            granule_fields['granule_signal_to_background_ratio'] = signal_mean / (background_mean + 1e-12) if bg_vals.size > 0 else 0.0
 
                     lbl_g, n_g = label(gran_mask, structure=np.ones((3, 3)))
                     props_g = measure.regionprops(lbl_g)
@@ -5468,6 +5663,7 @@ class Measurements:
                     'cell_texture_correlation': tex['texture_correlation'],
                 })
 
+            row.update(skeleton_fields)
             row.update(granule_fields)
             row.update(soma_ext)
             row.update(nuc_ext)
@@ -5520,6 +5716,7 @@ class Measurements:
                                _want("cell_intensity_entropy_gini") or _want("cell_intensity_highlow")
         need_cell_glcm = _want("cell_glcm")
         need_cell_process = _want("cell_process")
+        need_skeleton = _want("cell_skeleton")
         need_snr_cnr_sbr = _want("cell_snr_cnr_sbr")
 
         need_soma_stats = _want("soma_intensity_stats")
@@ -5633,7 +5830,14 @@ class Measurements:
             process_count = 0
             process_max_radius = 0
 
-            soma_mask = (self.ctx._soma_labels == cid)
+            soma_mask = (self.ctx._soma_labels == cid) if self.ctx._soma_labels is not None else np.zeros_like(cell_mask, dtype=bool)
+            skeleton_fields = {}
+            if need_skeleton:
+                skeleton_fields = self._skeleton_morphometry(
+                    cell_mask,
+                    soma_mask,
+                    spacing=(z_um, xy_um, xy_um),
+                )
             soma_vol_vox = float(np.sum(soma_mask))
             soma_props = measure.regionprops(soma_mask.astype(np.uint8), intensity_image=intensity) if soma_vol_vox > 0 else []
 
@@ -5715,92 +5919,6 @@ class Measurements:
             soma_dist = float(np.sqrt(((sy - cy) * xy_um) ** 2 + ((sx - cx) * xy_um) ** 2 + ((soma_sz - cz) * z_um) ** 2))
             nuc_dist = float(np.sqrt(((ny_c - cy) * xy_um) ** 2 + ((nx_c - cx) * xy_um) ** 2 + ((nz_c - cz) * z_um) ** 2))
 
-            granule_fields = {
-                'granule_mean_intensity': 0.0,
-                'granule_max_intensity': 0.0,
-                'granule_p95_intensity': 0.0,
-                'granule_integrated_intensity': 0.0,
-                'granule_volume_um3': 0.0,
-                'granule_volume_fraction': 0.0,
-                'granule_count': 0,
-                'granule_mean_size_um3': 0.0,
-                'granule_size_std_um3': 0.0,
-                'granule_max_size_um3': 0.0,
-                'granule_mean_eccentricity': 0.0,
-                'granule_mean_solidity': 0.0,
-                'granule_spatial_dispersion_um': 0.0,
-                'granule_nearest_neighbor_mean_um': 0.0,
-                'granule_clark_evans_index': 0.0,
-                'granule_signal_to_background_ratio': 0.0,
-            }
-            if granules is not None and np.any(granules > 0):
-                granule_mask = cell_mask & (granules > 0)
-                if np.any(granule_mask):
-                    granule_voxels = float(np.sum(granule_mask))
-                    granule_volume_um3 = granule_voxels * voxel_vol_um3
-                    granule_fields['granule_volume_um3'] = granule_volume_um3
-                    granule_fields['granule_volume_fraction'] = granule_voxels / (vol_vox + 1e-12)
-
-                    granule_intensity = cell_channel if cell_channel is not None and cell_channel.shape == granules.shape else intensity
-                    granule_values = np.asarray(granule_intensity[granule_mask], dtype=np.float64)
-                    granule_values = granule_values[np.isfinite(granule_values)]
-                    if granule_values.size > 0:
-                        granule_fields['granule_mean_intensity'] = float(np.mean(granule_values))
-                        granule_fields['granule_max_intensity'] = float(np.max(granule_values))
-                        granule_fields['granule_p95_intensity'] = float(np.percentile(granule_values, 95))
-                        granule_fields['granule_integrated_intensity'] = float(np.sum(granule_values))
-                        background_mask = cell_mask & (~(granules > 0))
-                        background_values = np.asarray(granule_intensity[background_mask], dtype=np.float64)
-                        background_values = background_values[np.isfinite(background_values)]
-                        if background_values.size > 0:
-                            background_mean = float(np.mean(background_values))
-                            granule_fields['granule_signal_to_background_ratio'] = float(np.mean(granule_values) / (background_mean + 1e-12))
-
-                    granule_labels, granule_n = label(
-                        granule_mask,
-                        structure=np.ones((3, 3, 3), dtype=np.uint8)
-                    )
-                    granule_props = measure.regionprops(granule_labels)
-                    if granule_props:
-                        granule_fields['granule_count'] = int(len(granule_props))
-                        granule_sizes = np.asarray([gp.area for gp in granule_props], dtype=np.float64) * voxel_vol_um3
-                        granule_fields['granule_mean_size_um3'] = float(np.mean(granule_sizes))
-                        granule_fields['granule_size_std_um3'] = float(np.std(granule_sizes))
-                        granule_fields['granule_max_size_um3'] = float(np.max(granule_sizes))
-
-                        granule_eccentricities = []
-                        granule_solidities = []
-                        granule_centroids = []
-                        for gp in granule_props:
-                            eigvals = getattr(gp, 'inertia_tensor_eigvals', None)
-                            if eigvals is not None:
-                                eigvals = np.asarray(eigvals, dtype=np.float64)
-                                if eigvals.size >= 3 and np.max(eigvals) > 1e-12:
-                                    granule_eccentricities.append(float(math.sqrt(max(0.0, 1.0 - np.min(eigvals) / np.max(eigvals)))))
-                            if hasattr(gp, 'solidity'):
-                                granule_solidities.append(float(gp.solidity))
-                            granule_centroids.append(np.asarray(gp.centroid, dtype=np.float64))
-
-                        if granule_eccentricities:
-                            granule_fields['granule_mean_eccentricity'] = float(np.mean(granule_eccentricities))
-                        if granule_solidities:
-                            granule_fields['granule_mean_solidity'] = float(np.mean(granule_solidities))
-
-                        centroids = np.asarray(granule_centroids, dtype=np.float64)
-                        if len(centroids) >= 2:
-                            physical_centroids = centroids * np.asarray([z_um, xy_um, xy_um], dtype=np.float64)
-                            center = np.mean(physical_centroids, axis=0)
-                            dispersion = np.sqrt(np.mean(np.sum((physical_centroids - center) ** 2, axis=1)))
-                            granule_fields['granule_spatial_dispersion_um'] = float(dispersion)
-                            distance_matrix = np.linalg.norm(physical_centroids[:, None, :] - physical_centroids[None, :, :], axis=2)
-                            np.fill_diagonal(distance_matrix, np.inf)
-                            nearest_neighbors = np.min(distance_matrix, axis=1)
-                            nearest_mean = float(np.mean(nearest_neighbors))
-                            granule_fields['granule_nearest_neighbor_mean_um'] = nearest_mean
-                            expected_nearest = 0.554 * ((vol_um3 / float(len(centroids))) ** (1.0 / 3.0)) if vol_um3 > 0 else 0.0
-                            if expected_nearest > 0:
-                                granule_fields['granule_clark_evans_index'] = nearest_mean / expected_nearest
-
             row = {
                 'cell_id': cid,
                 'filename': os.path.basename(filename),
@@ -5867,7 +5985,7 @@ class Measurements:
                     'cell_texture_correlation': tex_cell['texture_correlation'],
                 })
 
-            row.update(granule_fields)
+            row.update(skeleton_fields)
             row.update(soma_ext)
             row.update(nuc_ext)
             data.append(row)
@@ -6047,6 +6165,13 @@ class Measurements:
             "cell_eccentricity": "cell_eccentricity",
             "cell_convexity": "cell_convexity",
             "cell_extent": "cell_extent",
+            "cell_skeleton_length_um": "cell_skeleton",
+            "cell_skeleton_branch_points": "cell_skeleton",
+            "cell_skeleton_endpoints": "cell_skeleton",
+            "cell_skeleton_branch_count": "cell_skeleton",
+            "cell_skeleton_mean_branch_length_um": "cell_skeleton",
+            "cell_skeleton_max_branch_length_um": "cell_skeleton",
+            "cell_skeleton_tortuosity": "cell_skeleton",
             "cell_major_axis_um": "cell_major_minor",
             "cell_minor_axis_um": "cell_major_minor",
             "cell_max_feret_um": "cell_feret",
