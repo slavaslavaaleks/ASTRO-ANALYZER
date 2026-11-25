@@ -32,7 +32,7 @@ pip install numpy pandas tifffile pillow matplotlib scipy scikit-image nd2 czifi
 
 Launching the program:
 
-python Astro-Analyzer-v1.0.0.py
+python Astro-Analyzer-v1.0.2.py
 
 ---
 
