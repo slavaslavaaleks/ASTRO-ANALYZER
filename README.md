@@ -1,4 +1,4 @@
-# ASTRO-ANALYZER v1.0.0
+# ASTRO-ANALYZER v1.0.2
 
 **ASTRO-ANALYZER** is a program for automatic segmentation and morphometry of astrocytes, neurons, and microglial cells on 3D stacks and 2D images obtained by confocal and epifluorescence microscopy (tissue sections or cell culture).
 
