@@ -1,4 +1,4 @@
-# ASTRO-ANALYZER v1.0.0
+# ASTRO-ANALYZER v1.0.2
 
 **ASTRO-ANALYZER** — это программа для автоматической сегментации и морфометрии астроцитов, нейронов и клеток микроглии на 3D-стеках и 2D-изображениях, полученных методами конфокальной и эпифлуоресцентной микроскопии (срезы ткани либо культура клеток). 
 
@@ -32,7 +32,7 @@ pip install numpy pandas tifffile pillow matplotlib scipy scikit-image nd2 czifi
 
 Запуск программы:
 
-python Astro-Analyzer-v1.0.0.py
+python Astro-Analyzer-v1.0.2.py
 
 ---
 
